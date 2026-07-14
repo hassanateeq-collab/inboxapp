@@ -29,9 +29,22 @@ export default function LinkRoomModal({ conversationId, conversationLabel, onClo
 
   useEffect(() => {
     let active = true
-    supabase.from('v_inbox_linkable_bookings').select('*').order('room_number', { ascending: true })
-      .then(({ data }) => { if (active) { setBookings((data as Booking[]) || []); setLoading(false) } })
+    supabase.from('v_inbox_linkable_bookings')
+      .select('id, beds24_booking_id, property_label, property_code, booking_source, room_number, guest_name, check_in, check_out, checkin_status')
+      .order('room_number', { ascending: true })
+      .then(({ data }) => { if (active) { setBookings((data as unknown as Booking[]) || []); setLoading(false) } })
     return () => { active = false }
+  }, [])
+
+  // Escape closes the modal. Capture phase + stopPropagation so the inbox-level
+  // Escape handler (mobile thread deselect) doesn't also fire.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose() }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const results = useMemo(() => {

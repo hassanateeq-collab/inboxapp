@@ -32,6 +32,7 @@ export interface Message {
   sender: string | null
   msg_type: string
   body: string | null
+  media_url: string | null
   status: string | null
   created_at: string
 }

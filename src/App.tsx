@@ -18,7 +18,11 @@ export default function App() {
   }, [])
 
   if (loading) {
-    return <div className="h-full grid place-items-center bg-wa-dark text-wa-muted">Loading…</div>
+    return (
+      <div className="h-full grid place-items-center bg-wa-dark">
+        <div className="w-8 h-8 rounded-full border-2 border-wa-border border-t-wa-green animate-spin" role="status" aria-label="Loading" />
+      </div>
+    )
   }
   if (!session) return <Login />
   return <Inbox session={session} />

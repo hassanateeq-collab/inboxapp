@@ -1,0 +1,12 @@
+{
+  "name": "Hamsun Inbox",
+  "short_name": "Hamsun Inbox",
+  "description": "Staff WhatsApp inbox for Hamsun hotels",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b141a",
+  "theme_color": "#111b21",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
