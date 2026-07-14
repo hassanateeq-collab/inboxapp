@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { margin: 0; height: 100%; height: 100dvh; }
+#root { display: flex; flex-direction: column; overflow: hidden; }
+
+body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+
+/* Prevent iOS zoom-on-focus: form fields must be >= 16px */
+input, textarea, select { font-size: 16px; }
+
+/* Safe-area padding for notched phones (composer bottom) */
+@supports (padding: max(0px)) {
+  .safe-b { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+}
+
+/* WhatsApp-style chat backdrop */
+.wa-chat-bg { background-color: #0b141a; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #374248; border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
