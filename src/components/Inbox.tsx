@@ -9,7 +9,8 @@ import ChatThread from './ChatThread'
 const CONV_COLS =
   'id, connection_id, wa_phone, display_name, last_message_at, last_message_preview, last_inbound_at, ' +
   'unread_count, status, guest_id, booking_id, room_number, property_id, property_code, property_label, ' +
-  'booking_source, booking_name, beds24_booking_id, checkin_status, check_in, check_out, tier'
+  'booking_source, booking_name, beds24_booking_id, checkin_status, check_in, check_out, tier, ' +
+  'last_message_direction, last_message_status'
 
 // Short WebAudio ping for new inbound messages (no asset needed).
 function playPing() {
@@ -154,6 +155,8 @@ export default function Inbox({ session }: { session: Session }) {
             id: convId,
             last_message_at: m.created_at,
             last_message_preview: previewFor(m.body, m.msg_type),
+            last_message_direction: m.direction,
+            last_message_status: m.status ?? null,
             ...(m.direction === 'inbound' ? { last_inbound_at: m.created_at } : {}),
             unread_count:
               m.direction === 'inbound' && !isSelected
@@ -170,6 +173,17 @@ export default function Inbox({ session }: { session: Session }) {
         if (m?.direction === 'inbound' && isSelected) {
           // The thread is open, so keep the DB read-state at 0 (echo merges the same value: no flicker).
           void supabase.from('guest_conversations').update({ unread_count: 0 }).eq('id', convId)
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'guest_messages' }, (payload) => {
+        // Delivery receipts arrive as UPDATEs; advance the list tick when they hit the newest message.
+        const m: any = payload.new
+        const convId: string | undefined = m?.conversation_id
+        if (!convId || m?.direction !== 'outbound' || !m?.status) return
+        const existing = conversationsRef.current.find((c) => c.id === convId)
+        if (!existing || existing.last_message_direction !== 'outbound') return
+        if (existing.last_message_at && m.created_at >= existing.last_message_at) {
+          mergeConversation({ id: convId, last_message_status: m.status })
         }
       })
       .subscribe((status) => {

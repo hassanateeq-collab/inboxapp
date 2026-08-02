@@ -22,6 +22,8 @@ export interface Conversation {
   check_in: string | null
   check_out: string | null
   tier: number | null
+  last_message_direction: 'inbound' | 'outbound' | null
+  last_message_status: string | null
 }
 
 export interface Message {

@@ -1,4 +1,4 @@
-import { Suspense, lazy, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { Suspense, lazy, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Conversation, InboxIdentity, Message } from '../types'
 import { sourceLabel, digits } from '../lib/labels'
@@ -81,6 +81,7 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
   const [hasMore, setHasMore] = useState(true)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [roomPhones, setRoomPhones] = useState<string[]>([])
   const [sendAll, setSendAll] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
@@ -102,6 +103,25 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
 
   // Keep the module cache in sync so the next open of this thread is instant.
   useEffect(() => { cacheSet(conversation.id, messages) }, [conversation.id, messages])
+
+  // Info strips (e.g. "delivered as template") clear themselves.
+  useEffect(() => {
+    if (!info) return
+    const t = setTimeout(() => setInfo(null), 7000)
+    return () => clearTimeout(t)
+  }, [info])
+
+  // WhatsApp parity: when staff have the thread open, relay a read receipt for the newest
+  // inbound message so the guest sees blue ticks. Once per wamid.
+  const markedReadRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (document.visibilityState !== 'visible') return
+    const latestInbound = [...messages].reverse().find((m) => m.direction === 'inbound' && m.wa_message_id)
+    const wamid = latestInbound?.wa_message_id
+    if (!wamid || markedReadRef.current.has(wamid)) return
+    markedReadRef.current.add(wamid)
+    void supabase.functions.invoke('whatsapp-send', { body: { action: 'mark_read', message_id: wamid } }).catch(() => {})
+  }, [messages])
 
   // Initial load (latest page, newest-first then reversed) + realtime for this thread.
   useEffect(() => {
@@ -215,6 +235,9 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
       const errMsg = (data as any)?.error || error?.message
       if (errMsg) throw new Error(String(errMsg))
       const wamid: string | null = (data as any)?.wamid ?? null
+      if ((data as any)?.via === 'template') {
+        setInfo("Guest's 24h window was closed — delivered as the approved update template (small template fee).")
+      }
       setMessages((prev) => {
         // If the realtime echo already landed (matched by wamid), drop the temp bubble.
         if (wamid && prev.some((m) => m.id !== tempId && m.wa_message_id === wamid)) {
@@ -226,6 +249,69 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
       setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)))
     }
   }, [conversation.id, conversation.wa_phone])
+
+  // Media delivery: the file is already uploaded to inbox-media (public URL) when this runs.
+  const deliverMedia = useCallback(async (tempId: string, mediaUrl: string, kind: string, filename?: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-send', {
+        body: { conversation_id: conversation.id, to: conversation.wa_phone, media_url: mediaUrl, media_type: kind, filename },
+      })
+      const errMsg = (data as any)?.error || error?.message
+      if (errMsg) {
+        if ((data as any)?.window_closed) setError(String(errMsg))
+        throw new Error(String(errMsg))
+      }
+      const wamid: string | null = (data as any)?.wamid ?? null
+      setMessages((prev) => {
+        if (wamid && prev.some((m) => m.id !== tempId && m.wa_message_id === wamid)) {
+          return prev.filter((m) => m.id !== tempId)
+        }
+        return prev.map((m) => (m.id === tempId ? { ...m, wa_message_id: wamid, media_url: mediaUrl, status: 'sent' } : m))
+      })
+    } catch {
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)))
+    }
+  }, [conversation.id, conversation.wa_phone])
+
+  // Attach flow: optimistic bubble with a local preview, upload to storage, then send the link.
+  const handleSendMedia = useCallback(async (file: File) => {
+    setError(null)
+    const isImage = /^image\/(jpeg|png|webp)$/.test(file.type)
+    const isVideo = file.type === 'video/mp4'
+    const kind = isImage ? 'image' : isVideo ? 'video' : 'document'
+    const maxBytes = isImage ? 5 * 1024 * 1024 : isVideo ? 16 * 1024 * 1024 : 25 * 1024 * 1024
+    if (file.size > maxBytes) {
+      setError(`File too large — WhatsApp allows up to ${Math.round(maxBytes / 1024 / 1024)} MB for this type.`)
+      return
+    }
+    const temp: Message = {
+      id: newTempId(),
+      conversation_id: conversation.id,
+      wa_message_id: null,
+      direction: 'outbound',
+      sender: 'staff',
+      msg_type: kind,
+      body: kind === 'document' ? file.name : null,
+      media_url: URL.createObjectURL(file),
+      status: 'sending',
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, temp])
+    try {
+      const ext = (file.name.includes('.') ? file.name.split('.').pop() : '') || (isImage ? 'jpg' : 'bin')
+      const path = `outbound/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('inbox-media').upload(path, file, { contentType: file.type || undefined })
+      if (upErr) throw new Error(upErr.message)
+      const { data: pub } = supabase.storage.from('inbox-media').getPublicUrl(path)
+      if (!pub?.publicUrl) throw new Error('upload succeeded but no public URL')
+      // Swap the local preview for the durable URL so a later retry can reuse it.
+      setMessages((prev) => prev.map((m) => (m.id === temp.id ? { ...m, media_url: pub.publicUrl } : m)))
+      await deliverMedia(temp.id, pub.publicUrl, kind, kind === 'document' ? file.name : undefined)
+    } catch (e: any) {
+      setMessages((prev) => prev.map((m) => (m.id === temp.id ? { ...m, status: 'failed' } : m)))
+      if (!error) setError(e?.message || 'Attachment failed')
+    }
+  }, [conversation.id, deliverMedia, error])
 
   const handleSend = useCallback((raw: string) => {
     setError(null)
@@ -263,10 +349,17 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
 
   const retry = useCallback((id: string) => {
     const m = messagesRef.current.find((x) => x.id === id)
-    if (!m || !m.body) return
+    if (!m) return
+    // Media bubble: re-send the already-uploaded link (http URL = upload finished).
+    if (m.media_url && m.msg_type !== 'text' && m.media_url.startsWith('http')) {
+      setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, status: 'sending' } : x)))
+      void deliverMedia(id, m.media_url, m.msg_type === 'image' || m.msg_type === 'video' ? m.msg_type : 'document', m.body || undefined)
+      return
+    }
+    if (!m.body) return
     setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, status: 'sending' } : x)))
     void deliver(id, m.body)
-  }, [deliver])
+  }, [deliver, deliverMedia])
 
   function editSignature() {
     const v = window.prompt('Signature added after your messages (your name, or e.g. "Reception"):', signature)
@@ -313,6 +406,7 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
       />
 
       {error && <div className="bg-red-900/60 text-red-200 text-xs px-4 py-2">{error}</div>}
+      {info && <div className="bg-wa-header text-wa-muted text-xs px-4 py-2">{info}</div>}
 
       <div className="bg-wa-header px-3 pt-2 pb-2 safe-b shrink-0">
         <div className="flex items-center justify-between gap-2 text-[11px] text-wa-muted mb-1.5 px-1">
@@ -327,7 +421,7 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
             </label>
           )}
         </div>
-        <Composer onSend={handleSend} />
+        <Composer onSend={handleSend} onSendFile={handleSendMedia} />
       </div>
 
       {linkOpen && (
@@ -345,9 +439,10 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
 }
 
 // Composer owns its own text state so typing never re-renders the message list.
-const Composer = memo(function Composer({ onSend }: { onSend: (raw: string) => void }) {
+const Composer = memo(function Composer({ onSend, onSendFile }: { onSend: (raw: string) => void; onSendFile: (file: File) => void }) {
   const [text, setText] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   // Auto-grow up to ~6 lines, then scroll inside the textarea.
   useLayoutEffect(() => {
@@ -368,13 +463,35 @@ const Composer = memo(function Composer({ onSend }: { onSend: (raw: string) => v
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() }
   }
 
+  // Paste a screenshot/photo straight into the chat, like WhatsApp Web.
+  function onPaste(e: ClipboardEvent<HTMLTextAreaElement>) {
+    const item = Array.from(e.clipboardData?.items || []).find((i) => i.kind === 'file')
+    const file = item?.getAsFile()
+    if (file) { e.preventDefault(); onSendFile(file) }
+  }
+
+  function onPick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) onSendFile(file)
+    e.target.value = ''
+  }
+
   return (
     <div className="flex items-end gap-2">
+      <input ref={fileRef} type="file" className="hidden" onChange={onPick}
+        accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf,.doc,.docx,.xls,.xlsx" />
+      <button onClick={() => fileRef.current?.click()}
+        className="w-11 h-11 rounded-full text-wa-muted hover:text-wa-text grid place-items-center shrink-0" aria-label="Attach">
+        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M21.4 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.2-9.19a4 4 0 015.65 5.66l-9.2 9.19a2 2 0 01-2.82-2.83l8.49-8.48" />
+        </svg>
+      </button>
       <textarea
         ref={taRef}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
         placeholder="Type a message"
         rows={1}
         className="flex-1 px-4 py-2.5 rounded-2xl bg-wa-search text-wa-text outline-none placeholder:text-wa-muted resize-none max-h-36 overflow-y-auto"

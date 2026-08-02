@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import type { Conversation } from '../types'
 import { sourceLabel, digits } from '../lib/labels'
+import { Ticks } from './Ticks'
 
 function timeShort(ts: string | null) {
   if (!ts) return ''
@@ -146,7 +147,12 @@ export default function ConversationList({
                         <span className="text-[11px] text-wa-muted shrink-0">{timeShort(c.last_message_at)}</span>
                       </div>
                       <div className="flex justify-between items-center gap-2 mt-0.5">
-                        <span className="truncate text-sm text-wa-muted">{c.last_message_preview || (g.isStray ? '+' + c.wa_phone : '')}</span>
+                        <span className="truncate text-sm text-wa-muted inline-flex items-center gap-1 min-w-0">
+                          {c.last_message_direction === 'outbound' && (
+                            <span className="shrink-0 inline-flex"><Ticks status={c.last_message_status} /></span>
+                          )}
+                          <span className="truncate">{c.last_message_preview || (g.isStray ? '+' + c.wa_phone : '')}</span>
+                        </span>
                         {c.unread_count > 0 && (
                           <span className="bg-wa-green text-black text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 grid place-items-center shrink-0">{c.unread_count}</span>
                         )}
