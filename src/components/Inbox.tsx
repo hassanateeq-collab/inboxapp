@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import type { Conversation, InboxIdentity } from '../types'
+import { stayStateOf, type Conversation, type InboxIdentity, type StayState } from '../types'
 import ConversationList from './ConversationList'
 import ChatThread from './ChatThread'
 
@@ -48,7 +48,7 @@ export default function Inbox({ session }: { session: Session }) {
   const [loaded, setLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [propertyFilter, setPropertyFilter] = useState<string>('all')
-  const [stayFilter, setStayFilter] = useState<'current' | 'past' | 'all'>('current')
+  const [stayFilter, setStayFilter] = useState<StayState | 'all'>('inhouse')
   const [identity, setIdentity] = useState<InboxIdentity | null>(null)
   const selectedIdRef = useRef<string | null>(null)
   selectedIdRef.current = selectedId
@@ -206,19 +206,16 @@ export default function Inbox({ session }: { session: Session }) {
     return Array.from(map, ([code, label]) => ({ code, label })).sort((a, b) => a.label.localeCompare(b.label))
   }, [conversations])
 
-  const hasStray = useMemo(() => conversations.some((c) => !c.booking_id && !c.room_number), [conversations])
-
-  // A "past" conversation belongs to a checked-out booking. Unread messages ALWAYS surface in
-  // Current — a past guest who writes must never be missed just because they departed.
-  const isPast = (c: Conversation) => !!c.booking_id && c.checkin_status === 'CHECKED_OUT'
-  const pastCount = useMemo(() => conversations.filter((c) => isPast(c) && !c.unread_count).length, [conversations])
+  // Per-tab unread counts power the pill badges — a message in any tab is visible from anywhere.
+  const unreadByState = useMemo(() => {
+    const acc: Record<StayState, number> = { inhouse: 0, arriving: 0, past: 0, unknown: 0 }
+    for (const c of conversations) acc[stayStateOf(c)] += c.unread_count || 0
+    return acc
+  }, [conversations])
 
   const filtered = useMemo(() => {
-    let list = conversations
-    if (stayFilter === 'current') list = list.filter((c) => !isPast(c) || (c.unread_count || 0) > 0)
-    else if (stayFilter === 'past') list = list.filter(isPast)
-    if (propertyFilter === 'stray') return list.filter((c) => !c.booking_id && !c.room_number)
-    if (propertyFilter !== 'all') return list.filter((c) => c.property_code === propertyFilter)
+    let list = stayFilter === 'all' ? conversations : conversations.filter((c) => stayStateOf(c) === stayFilter)
+    if (propertyFilter !== 'all') list = list.filter((c) => c.property_code === propertyFilter)
     return list
   }, [conversations, propertyFilter, stayFilter])
 
@@ -258,10 +255,9 @@ export default function Inbox({ session }: { session: Session }) {
           propertyOptions={propertyOptions}
           propertyFilter={propertyFilter}
           onFilterChange={setPropertyFilter}
-          hasStray={hasStray}
           stayFilter={stayFilter}
           onStayFilterChange={setStayFilter}
-          pastCount={pastCount}
+          unreadByState={unreadByState}
         />
       </div>
       <div className={`${selected ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>

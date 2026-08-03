@@ -43,3 +43,14 @@ export interface InboxIdentity {
   full_name: string | null
   first_name: string | null
 }
+
+// Which tab a conversation belongs to. Unknown = not linked to any booking (join requests,
+// booking inquiries, cold inbound); the rest follow the linked booking's check-in state.
+export type StayState = 'inhouse' | 'arriving' | 'past' | 'unknown'
+
+export function stayStateOf(c: Conversation): StayState {
+  if (!c.booking_id) return 'unknown'
+  if (c.checkin_status === 'CHECKED_OUT') return 'past'
+  if (c.checkin_status === 'PENDING') return 'arriving'
+  return 'inhouse'
+}

@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import type { Conversation } from '../types'
+import { stayStateOf, type Conversation, type StayState } from '../types'
 import { sourceLabel, digits } from '../lib/labels'
 import { Ticks } from './Ticks'
 
@@ -19,16 +19,22 @@ type Group = {
   booking_source: string | null
   booking_name: string | null
   isStray: boolean
-  checkedOut: boolean
+  state: StayState
+  beds24: number | null
+  checkIn: string | null
   checkOut: string | null
   items: Conversation[]
   lastAt: number
 }
 
+function fmtShortDate(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : ''
+}
+
 export default function ConversationList({
   conversations, loading, selectedId, onSelect, userEmail, onLogout,
-  propertyOptions, propertyFilter, onFilterChange, hasStray,
-  stayFilter, onStayFilterChange, pastCount,
+  propertyOptions, propertyFilter, onFilterChange,
+  stayFilter, onStayFilterChange, unreadByState,
 }: {
   conversations: Conversation[]
   loading: boolean
@@ -39,10 +45,9 @@ export default function ConversationList({
   propertyOptions: { code: string; label: string }[]
   propertyFilter: string
   onFilterChange: (v: string) => void
-  hasStray: boolean
-  stayFilter: 'current' | 'past' | 'all'
-  onStayFilterChange: (v: 'current' | 'past' | 'all') => void
-  pastCount: number
+  stayFilter: StayState | 'all'
+  onStayFilterChange: (v: StayState | 'all') => void
+  unreadByState: Record<StayState, number>
 }) {
   const [query, setQuery] = useState('')
 
@@ -65,7 +70,7 @@ export default function ConversationList({
       const key = stray ? '__stray__' : (c.booking_id || 'room:' + c.room_number)
       let g = m.get(key)
       if (!g) {
-        g = { key, room_number: c.room_number, property_label: c.property_label, booking_source: c.booking_source, booking_name: c.booking_name, isStray: stray, checkedOut: !stray && c.checkin_status === 'CHECKED_OUT', checkOut: c.check_out, items: [], lastAt: 0 }
+        g = { key, room_number: c.room_number, property_label: c.property_label, booking_source: c.booking_source, booking_name: c.booking_name, isStray: stray, state: stayStateOf(c), beds24: c.beds24_booking_id, checkIn: c.check_in, checkOut: c.check_out, items: [], lastAt: 0 }
         m.set(key, g)
       }
       g.items.push(c)
@@ -113,14 +118,15 @@ export default function ConversationList({
         {propertyOptions.map((o) => (
           <FilterPill key={o.code} active={propertyFilter === o.code} onClick={() => onFilterChange(o.code)}>{o.label}</FilterPill>
         ))}
-        {hasStray && <FilterPill active={propertyFilter === 'stray'} onClick={() => onFilterChange('stray')}>Stray</FilterPill>}
       </div>
 
-      {/* Stay-state filter: Current = in-house/arriving + strays (+ anything unread); Past = checked-out */}
+      {/* Stay-state tabs with live unread badges — a message in any tab is visible from anywhere. */}
       <div className="flex gap-1.5 px-3 pb-2 overflow-x-auto bg-wa-panel border-b border-wa-border/60 shrink-0">
-        <FilterPill active={stayFilter === 'current'} onClick={() => onStayFilterChange('current')}>In-house</FilterPill>
-        <FilterPill active={stayFilter === 'past'} onClick={() => onStayFilterChange('past')}>Checked out{pastCount > 0 ? ` (${pastCount})` : ''}</FilterPill>
-        <FilterPill active={stayFilter === 'all'} onClick={() => onStayFilterChange('all')}>Everyone</FilterPill>
+        <FilterPill active={stayFilter === 'inhouse'} onClick={() => onStayFilterChange('inhouse')} unread={unreadByState.inhouse}>In-house</FilterPill>
+        <FilterPill active={stayFilter === 'arriving'} onClick={() => onStayFilterChange('arriving')} unread={unreadByState.arriving}>Arriving</FilterPill>
+        <FilterPill active={stayFilter === 'past'} onClick={() => onStayFilterChange('past')} unread={unreadByState.past}>Checked out</FilterPill>
+        <FilterPill active={stayFilter === 'unknown'} onClick={() => onStayFilterChange('unknown')} unread={unreadByState.unknown}>Unknown</FilterPill>
+        <FilterPill active={stayFilter === 'all'} onClick={() => onStayFilterChange('all')}>All</FilterPill>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -138,12 +144,21 @@ export default function ConversationList({
                     <div className="text-[11px] uppercase tracking-wide text-wa-muted">Not linked to a room</div>
                   ) : (
                     <div className="flex items-center gap-1.5 flex-wrap text-[11px] min-w-0">
-                      <span className={`font-semibold ${g.checkedOut ? 'text-wa-muted' : 'text-wa-text'}`}>Room {g.room_number || '—'}</span>
+                      {/* Past stays are identified by BOOKING number, not room — the room belongs to
+                          someone else now, and repeat guests stay in different rooms. */}
+                      {g.state === 'past' ? (
+                        <span className="font-semibold text-wa-muted">#{g.beds24 || '—'}</span>
+                      ) : g.state === 'arriving' ? (
+                        <span className="font-semibold text-wa-text">{g.room_number ? `Room ${g.room_number}` : `#${g.beds24 || '—'}`}</span>
+                      ) : (
+                        <span className="font-semibold text-wa-text">Room {g.room_number || '—'}</span>
+                      )}
                       {g.property_label && <span className="text-wa-muted">· {g.property_label}</span>}
-                      {g.checkedOut && (
-                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-amber-400/90">
-                          checked out{g.checkOut ? ` ${new Date(g.checkOut).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}` : ''}
-                        </span>
+                      {g.state === 'past' && (
+                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-amber-400/90">departed{g.checkOut ? ` ${fmtShortDate(g.checkOut)}` : ''}</span>
+                      )}
+                      {g.state === 'arriving' && (
+                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-sky-400/90">arriving{g.checkIn ? ` ${fmtShortDate(g.checkIn)}` : ''}</span>
                       )}
                       {g.booking_source && <span className="px-1.5 py-0.5 rounded bg-wa-header text-wa-muted">{sourceLabel(g.booking_source)}</span>}
                       {g.booking_name && <span className="text-wa-muted truncate">· {g.booking_name}</span>}
@@ -203,13 +218,18 @@ function SkeletonRows() {
   )
 }
 
-function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function FilterPill({ active, onClick, unread, children }: { active: boolean; onClick: () => void; unread?: number; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1 rounded-full text-xs whitespace-nowrap shrink-0 transition-colors ${active ? 'bg-wa-green text-black font-medium' : 'bg-wa-header text-wa-muted hover:text-wa-text'}`}
+      className={`px-3 py-1 rounded-full text-xs whitespace-nowrap shrink-0 transition-colors inline-flex items-center gap-1.5 ${active ? 'bg-wa-green text-black font-medium' : 'bg-wa-header text-wa-muted hover:text-wa-text'}`}
     >
       {children}
+      {(unread ?? 0) > 0 && (
+        <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold grid place-items-center ${active ? 'bg-black/20 text-black' : 'bg-wa-green text-black'}`}>
+          {unread}
+        </span>
+      )}
     </button>
   )
 }
