@@ -42,6 +42,18 @@ function fmtShortDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : ''
 }
 
+// Compact stay range for nameplates: "03–04 Aug" or "30 Jul–05 Aug".
+function fmtStayRange(checkIn: string | null, checkOut: string | null): string {
+  if (!checkIn && !checkOut) return ''
+  if (!checkIn) return `→ ${fmtShortDate(checkOut)}`
+  if (!checkOut) return `${fmtShortDate(checkIn)} →`
+  const a = new Date(checkIn); const b = new Date(checkOut)
+  if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) {
+    return `${String(a.getDate()).padStart(2, '0')}–${fmtShortDate(checkOut)}`
+  }
+  return `${fmtShortDate(checkIn)}–${fmtShortDate(checkOut)}`
+}
+
 export default function ConversationList({
   conversations, loading, selectedId, onSelect, userEmail, onLogout,
   propertyOptions, propertyFilter, onFilterChange,
@@ -166,11 +178,14 @@ export default function ConversationList({
                         <span className="font-semibold text-wa-text">Room {g.room_number || '—'}</span>
                       )}
                       {g.property_label && <span className="text-wa-muted">· {g.property_label}</span>}
+                      {(g.checkIn || g.checkOut) && (
+                        <span className="text-wa-muted tabular-nums">· {fmtStayRange(g.checkIn, g.checkOut)}</span>
+                      )}
                       {g.state === 'past' && (
-                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-amber-400/90">departed{g.checkOut ? ` ${fmtShortDate(g.checkOut)}` : ''}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-amber-400/90">departed</span>
                       )}
                       {g.state === 'arriving' && (
-                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-sky-400/90">arriving{g.checkIn ? ` ${fmtShortDate(g.checkIn)}` : ''}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-sky-400/90">arriving</span>
                       )}
                       {g.booking_source && <span className="px-1.5 py-0.5 rounded bg-wa-header text-wa-muted">{sourceLabel(g.booking_source)}</span>}
                       {g.booking_name && <span className="text-wa-muted truncate">· {g.booking_name}</span>}
