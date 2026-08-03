@@ -44,6 +44,21 @@ export interface InboxIdentity {
   first_name: string | null
 }
 
+// One in-house booking from pms_messaging_reachability — used to surface rooms that have
+// NO WhatsApp conversation (wrong/missing/unattached numbers) on the In-house tab.
+export interface RosterEntry {
+  booking_id: string
+  beds24_booking_id: number | null
+  room_number: string | null
+  property_code: string | null
+  primary_name: string | null
+  primary_number: string | null
+  attached_count: number
+  with_number_count: number
+  attached_invalid: number
+  status: string
+}
+
 // Which tab a conversation belongs to. Unknown = not linked to any booking (join requests,
 // booking inquiries, cold inbound); the rest follow the linked booking's check-in state.
 export type StayState = 'inhouse' | 'arriving' | 'past' | 'unknown'

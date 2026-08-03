@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { stayStateOf, type Conversation, type InboxIdentity, type StayState } from '../types'
+import { stayStateOf, type Conversation, type InboxIdentity, type RosterEntry, type StayState } from '../types'
 import ConversationList from './ConversationList'
 import ChatThread from './ChatThread'
 
@@ -206,6 +206,29 @@ export default function Inbox({ session }: { session: Session }) {
     return Array.from(map, ([code, label]) => ({ code, label })).sort((a, b) => a.label.localeCompare(b.label))
   }, [conversations])
 
+  // Full in-house roster (all branches) so the In-house tab can show rooms with NO WhatsApp
+  // connection and WHY (no number / not on WhatsApp / not attached). Refreshes every minute.
+  const [roster, setRoster] = useState<RosterEntry[]>([])
+  useEffect(() => {
+    let active = true
+    const load = () => {
+      supabase.rpc('pms_messaging_reachability', { p_property_id: null }).then(({ data }) => {
+        if (active && Array.isArray(data)) setRoster(data as RosterEntry[])
+      })
+    }
+    load()
+    const t = setInterval(load, 60_000)
+    return () => { active = false; clearInterval(t) }
+  }, [])
+
+  // In-house bookings that have no conversation yet — the reachability gaps reception must fix.
+  const rosterGaps = useMemo(() => {
+    const withConv = new Set(conversations.map((c) => c.booking_id).filter(Boolean))
+    let gaps = roster.filter((r) => !withConv.has(r.booking_id))
+    if (propertyFilter !== 'all') gaps = gaps.filter((r) => r.property_code === propertyFilter)
+    return gaps.sort((a, b) => (a.property_code || '').localeCompare(b.property_code || '') || (a.room_number || '').localeCompare(b.room_number || ''))
+  }, [roster, conversations, propertyFilter])
+
   // Per-tab unread counts power the pill badges — a message in any tab is visible from anywhere.
   const unreadByState = useMemo(() => {
     const acc: Record<StayState, number> = { inhouse: 0, arriving: 0, past: 0, unknown: 0 }
@@ -258,6 +281,7 @@ export default function Inbox({ session }: { session: Session }) {
           stayFilter={stayFilter}
           onStayFilterChange={setStayFilter}
           unreadByState={unreadByState}
+          rosterGaps={stayFilter === 'inhouse' ? rosterGaps : []}
         />
       </div>
       <div className={`${selected ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>

@@ -1,7 +1,18 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { stayStateOf, type Conversation, type StayState } from '../types'
+import { stayStateOf, type Conversation, type RosterEntry, type StayState } from '../types'
 import { sourceLabel, digits } from '../lib/labels'
 import { Ticks } from './Ticks'
+
+// Why an in-house room has no WhatsApp thread — reception fixes these at the desk.
+function gapReason(r: RosterEntry): { label: string; cls: string } {
+  if (r.status === 'no_number' || r.with_number_count === 0)
+    return { label: 'No number attached', cls: 'bg-red-500/15 text-red-400' }
+  if (r.attached_invalid > 0)
+    return { label: 'Number not on WhatsApp', cls: 'bg-red-500/15 text-red-400' }
+  if (r.attached_count === 0)
+    return { label: 'Number not linked', cls: 'bg-amber-500/15 text-amber-400' }
+  return { label: 'No messages yet', cls: 'bg-wa-header text-wa-muted' }
+}
 
 function timeShort(ts: string | null) {
   if (!ts) return ''
@@ -34,7 +45,7 @@ function fmtShortDate(iso: string | null): string {
 export default function ConversationList({
   conversations, loading, selectedId, onSelect, userEmail, onLogout,
   propertyOptions, propertyFilter, onFilterChange,
-  stayFilter, onStayFilterChange, unreadByState,
+  stayFilter, onStayFilterChange, unreadByState, rosterGaps,
 }: {
   conversations: Conversation[]
   loading: boolean
@@ -48,6 +59,7 @@ export default function ConversationList({
   stayFilter: StayState | 'all'
   onStayFilterChange: (v: StayState | 'all') => void
   unreadByState: Record<StayState, number>
+  rosterGaps: RosterEntry[]
 }) {
   const [query, setQuery] = useState('')
 
@@ -195,6 +207,36 @@ export default function ConversationList({
                 ))}
               </div>
             ))}
+            {rosterGaps.length > 0 && !query && (
+              <div>
+                <div className="px-3 py-1.5 bg-wa-panel border-y border-wa-border/40 sticky top-0 z-10">
+                  <div className="text-[11px] uppercase tracking-wide text-red-400/90 font-semibold">
+                    Not connected to WhatsApp ({rosterGaps.length})
+                  </div>
+                </div>
+                {rosterGaps.map((r) => {
+                  const reason = gapReason(r)
+                  return (
+                    <div key={r.booking_id} className="flex items-center gap-3 px-3 py-2.5 border-b border-wa-border/30 opacity-90">
+                      <div className="w-11 h-11 rounded-full border border-dashed border-wa-border grid place-items-center text-wa-muted text-xs font-medium shrink-0">
+                        {(r.room_number || '?').slice(0, 4)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                          <span className="font-medium">Room {r.room_number || '—'}</span>
+                          <span className="text-[11px] text-wa-muted">· {r.property_code || '—'}</span>
+                          <span className="text-sm text-wa-muted truncate">{r.primary_name || 'Guest'}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${reason.cls}`}>{reason.label}</span>
+                          {r.primary_number && <span className="text-xs text-wa-muted truncate">{r.primary_number}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
