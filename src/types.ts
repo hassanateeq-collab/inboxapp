@@ -51,6 +51,7 @@ export interface RosterEntry {
   beds24_booking_id: number | null
   room_number: string | null
   property_code: string | null
+  booking_source: string | null
   primary_name: string | null
   primary_number: string | null
   attached_count: number

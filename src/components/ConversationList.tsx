@@ -225,6 +225,9 @@ export default function ConversationList({
                         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                           <span className="font-medium">Room {r.room_number || '—'}</span>
                           <span className="text-[11px] text-wa-muted">· {r.property_code || '—'}</span>
+                          {r.booking_source && (
+                            <span className="px-1.5 py-0.5 rounded bg-wa-header text-wa-muted text-[10px]">{sourceLabel(r.booking_source)}</span>
+                          )}
                           <span className="text-sm text-wa-muted truncate">{r.primary_name || 'Guest'}</span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 min-w-0">
