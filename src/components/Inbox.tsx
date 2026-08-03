@@ -48,6 +48,7 @@ export default function Inbox({ session }: { session: Session }) {
   const [loaded, setLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [propertyFilter, setPropertyFilter] = useState<string>('all')
+  const [stayFilter, setStayFilter] = useState<'current' | 'past' | 'all'>('current')
   const [identity, setIdentity] = useState<InboxIdentity | null>(null)
   const selectedIdRef = useRef<string | null>(null)
   selectedIdRef.current = selectedId
@@ -207,11 +208,19 @@ export default function Inbox({ session }: { session: Session }) {
 
   const hasStray = useMemo(() => conversations.some((c) => !c.booking_id && !c.room_number), [conversations])
 
+  // A "past" conversation belongs to a checked-out booking. Unread messages ALWAYS surface in
+  // Current — a past guest who writes must never be missed just because they departed.
+  const isPast = (c: Conversation) => !!c.booking_id && c.checkin_status === 'CHECKED_OUT'
+  const pastCount = useMemo(() => conversations.filter((c) => isPast(c) && !c.unread_count).length, [conversations])
+
   const filtered = useMemo(() => {
-    if (propertyFilter === 'all') return conversations
-    if (propertyFilter === 'stray') return conversations.filter((c) => !c.booking_id && !c.room_number)
-    return conversations.filter((c) => c.property_code === propertyFilter)
-  }, [conversations, propertyFilter])
+    let list = conversations
+    if (stayFilter === 'current') list = list.filter((c) => !isPast(c) || (c.unread_count || 0) > 0)
+    else if (stayFilter === 'past') list = list.filter(isPast)
+    if (propertyFilter === 'stray') return list.filter((c) => !c.booking_id && !c.room_number)
+    if (propertyFilter !== 'all') return list.filter((c) => c.property_code === propertyFilter)
+    return list
+  }, [conversations, propertyFilter, stayFilter])
 
   const selected = conversations.find((c) => c.id === selectedId) || null
 
@@ -250,6 +259,9 @@ export default function Inbox({ session }: { session: Session }) {
           propertyFilter={propertyFilter}
           onFilterChange={setPropertyFilter}
           hasStray={hasStray}
+          stayFilter={stayFilter}
+          onStayFilterChange={setStayFilter}
+          pastCount={pastCount}
         />
       </div>
       <div className={`${selected ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>

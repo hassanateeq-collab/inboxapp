@@ -19,6 +19,8 @@ type Group = {
   booking_source: string | null
   booking_name: string | null
   isStray: boolean
+  checkedOut: boolean
+  checkOut: string | null
   items: Conversation[]
   lastAt: number
 }
@@ -26,6 +28,7 @@ type Group = {
 export default function ConversationList({
   conversations, loading, selectedId, onSelect, userEmail, onLogout,
   propertyOptions, propertyFilter, onFilterChange, hasStray,
+  stayFilter, onStayFilterChange, pastCount,
 }: {
   conversations: Conversation[]
   loading: boolean
@@ -37,6 +40,9 @@ export default function ConversationList({
   propertyFilter: string
   onFilterChange: (v: string) => void
   hasStray: boolean
+  stayFilter: 'current' | 'past' | 'all'
+  onStayFilterChange: (v: 'current' | 'past' | 'all') => void
+  pastCount: number
 }) {
   const [query, setQuery] = useState('')
 
@@ -59,7 +65,7 @@ export default function ConversationList({
       const key = stray ? '__stray__' : (c.booking_id || 'room:' + c.room_number)
       let g = m.get(key)
       if (!g) {
-        g = { key, room_number: c.room_number, property_label: c.property_label, booking_source: c.booking_source, booking_name: c.booking_name, isStray: stray, items: [], lastAt: 0 }
+        g = { key, room_number: c.room_number, property_label: c.property_label, booking_source: c.booking_source, booking_name: c.booking_name, isStray: stray, checkedOut: !stray && c.checkin_status === 'CHECKED_OUT', checkOut: c.check_out, items: [], lastAt: 0 }
         m.set(key, g)
       }
       g.items.push(c)
@@ -102,12 +108,19 @@ export default function ConversationList({
         </div>
       </div>
 
-      <div className="flex gap-1.5 px-3 py-2 overflow-x-auto bg-wa-panel border-b border-wa-border/60 shrink-0">
+      <div className="flex gap-1.5 px-3 py-2 overflow-x-auto bg-wa-panel shrink-0">
         <FilterPill active={propertyFilter === 'all'} onClick={() => onFilterChange('all')}>All</FilterPill>
         {propertyOptions.map((o) => (
           <FilterPill key={o.code} active={propertyFilter === o.code} onClick={() => onFilterChange(o.code)}>{o.label}</FilterPill>
         ))}
         {hasStray && <FilterPill active={propertyFilter === 'stray'} onClick={() => onFilterChange('stray')}>Stray</FilterPill>}
+      </div>
+
+      {/* Stay-state filter: Current = in-house/arriving + strays (+ anything unread); Past = checked-out */}
+      <div className="flex gap-1.5 px-3 pb-2 overflow-x-auto bg-wa-panel border-b border-wa-border/60 shrink-0">
+        <FilterPill active={stayFilter === 'current'} onClick={() => onStayFilterChange('current')}>In-house</FilterPill>
+        <FilterPill active={stayFilter === 'past'} onClick={() => onStayFilterChange('past')}>Checked out{pastCount > 0 ? ` (${pastCount})` : ''}</FilterPill>
+        <FilterPill active={stayFilter === 'all'} onClick={() => onStayFilterChange('all')}>Everyone</FilterPill>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -125,8 +138,13 @@ export default function ConversationList({
                     <div className="text-[11px] uppercase tracking-wide text-wa-muted">Not linked to a room</div>
                   ) : (
                     <div className="flex items-center gap-1.5 flex-wrap text-[11px] min-w-0">
-                      <span className="font-semibold text-wa-text">Room {g.room_number || '—'}</span>
+                      <span className={`font-semibold ${g.checkedOut ? 'text-wa-muted' : 'text-wa-text'}`}>Room {g.room_number || '—'}</span>
                       {g.property_label && <span className="text-wa-muted">· {g.property_label}</span>}
+                      {g.checkedOut && (
+                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-amber-400/90">
+                          checked out{g.checkOut ? ` ${new Date(g.checkOut).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}` : ''}
+                        </span>
+                      )}
                       {g.booking_source && <span className="px-1.5 py-0.5 rounded bg-wa-header text-wa-muted">{sourceLabel(g.booking_source)}</span>}
                       {g.booking_name && <span className="text-wa-muted truncate">· {g.booking_name}</span>}
                     </div>
