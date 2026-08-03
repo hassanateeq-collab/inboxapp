@@ -52,6 +52,8 @@ export interface RosterEntry {
   room_number: string | null
   property_code: string | null
   booking_source: string | null
+  check_in: string | null
+  check_out: string | null
   primary_name: string | null
   primary_number: string | null
   attached_count: number

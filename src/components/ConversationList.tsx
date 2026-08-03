@@ -240,6 +240,9 @@ export default function ConversationList({
                         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                           <span className="font-medium">Room {r.room_number || '—'}</span>
                           <span className="text-[11px] text-wa-muted">· {r.property_code || '—'}</span>
+                          {(r.check_in || r.check_out) && (
+                            <span className="text-[11px] text-wa-muted tabular-nums">· {fmtStayRange(r.check_in, r.check_out)}</span>
+                          )}
                           {r.booking_source && (
                             <span className="px-1.5 py-0.5 rounded bg-wa-header text-wa-muted text-[10px]">{sourceLabel(r.booking_source)}</span>
                           )}
