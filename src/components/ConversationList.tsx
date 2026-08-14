@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { stayStateOf, windowInfo, type Conversation, type RosterEntry, type StayState } from '../types'
-import { sourceLabel, digits } from '../lib/labels'
+import { sourceLabel, digits, avatarColor } from '../lib/labels'
 import { Ticks } from './Ticks'
 
 // Why an in-house room has no WhatsApp thread — reception fixes these at the desk.
@@ -145,7 +145,7 @@ export default function ConversationList({
       </div>
 
       {/* Stay-state tabs with live unread badges — a message in any tab is visible from anywhere. */}
-      <div className="flex gap-1.5 px-3 pb-2 overflow-x-auto bg-wa-panel border-b border-wa-border/60 shrink-0">
+      <div className="flex gap-1.5 px-3 pb-2 overflow-x-auto bg-wa-panel shrink-0">
         <FilterPill active={stayFilter === 'inhouse'} onClick={() => onStayFilterChange('inhouse')} unread={unreadByState.inhouse}>In-house</FilterPill>
         <FilterPill active={stayFilter === 'arriving'} onClick={() => onStayFilterChange('arriving')} unread={unreadByState.arriving}>Arriving</FilterPill>
         <FilterPill active={stayFilter === 'past'} onClick={() => onStayFilterChange('past')} unread={unreadByState.past}>Checked out</FilterPill>
@@ -163,70 +163,71 @@ export default function ConversationList({
             )}
             {groups.map((g) => (
               <div key={g.key}>
-                <div className="px-3 py-1.5 bg-wa-panel border-b border-wa-border/40 sticky top-0 z-10">
+                <div className="px-3 py-1 bg-wa-panel/95 backdrop-blur-sm sticky top-0 z-10">
                   {g.isStray ? (
-                    <div className="text-[11px] uppercase tracking-wide text-wa-muted">Not linked to a room</div>
+                    <div className="text-[10px] uppercase tracking-wider text-wa-muted/80">Not linked to a room</div>
                   ) : (
-                    <div className="flex items-center gap-1.5 flex-wrap text-[11px] min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap text-[10.5px] min-w-0 text-wa-muted">
                       {/* Past stays are identified by BOOKING number, not room — the room belongs to
                           someone else now, and repeat guests stay in different rooms. */}
                       {g.state === 'past' ? (
-                        <span className="font-semibold text-wa-muted">#{g.beds24 || '—'}</span>
-                      ) : g.state === 'arriving' ? (
-                        <span className="font-semibold text-wa-text">{g.room_number ? `Room ${g.room_number}` : `#${g.beds24 || '—'}`}</span>
+                        <span className="font-semibold">#{g.beds24 || '—'}</span>
                       ) : (
-                        <span className="font-semibold text-wa-text">Room {g.room_number || '—'}</span>
+                        <span className="font-semibold text-wa-text/90">{g.room_number ? `Room ${g.room_number}` : `#${g.beds24 || '—'}`}</span>
                       )}
-                      {g.property_label && <span className="text-wa-muted">· {g.property_label}</span>}
-                      {(g.checkIn || g.checkOut) && (
-                        <span className="text-wa-muted tabular-nums">· {fmtStayRange(g.checkIn, g.checkOut)}</span>
-                      )}
-                      {g.state === 'past' && (
-                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-amber-400/90">departed</span>
-                      )}
-                      {g.state === 'arriving' && (
-                        <span className="px-1.5 py-0.5 rounded bg-wa-header text-sky-400/90">arriving</span>
-                      )}
-                      {g.booking_source && <span className="px-1.5 py-0.5 rounded bg-wa-header text-wa-muted">{sourceLabel(g.booking_source)}</span>}
-                      {g.booking_name && <span className="text-wa-muted truncate">· {g.booking_name}</span>}
+                      {g.property_label && <span>· {g.property_label}</span>}
+                      {(g.checkIn || g.checkOut) && <span className="tabular-nums">· {fmtStayRange(g.checkIn, g.checkOut)}</span>}
+                      {g.state === 'past' && <span className="text-amber-400/90">· departed</span>}
+                      {g.state === 'arriving' && <span className="text-sky-400/90">· arriving</span>}
+                      {g.booking_source && <span>· {sourceLabel(g.booking_source)}</span>}
+                      {g.booking_name && <span className="truncate">· {g.booking_name}</span>}
                     </div>
                   )}
                 </div>
-                {g.items.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => onSelect(c.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-wa-hover transition-colors border-b border-wa-border/30 ${selectedId === c.id ? 'bg-wa-hover' : ''}`}
-                  >
-                    <div className="w-11 h-11 rounded-full bg-wa-header grid place-items-center text-wa-muted font-medium shrink-0">
-                      {(c.display_name || c.wa_phone).slice(0, 1).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex justify-between items-baseline gap-2">
-                        <span className="truncate font-medium">{c.display_name || '+' + c.wa_phone}</span>
-                        <span className="text-[11px] text-wa-muted shrink-0 inline-flex items-center gap-1.5">
-                          {/* 24h window state: green = open (free replies), amber = closed (template only) */}
-                          <span
-                            className={`w-2 h-2 rounded-full ${windowInfo(c).open ? 'bg-wa-green' : 'bg-amber-500/80'}`}
-                            title={windowInfo(c).open ? 'Window open — replies are free' : 'Window closed — replies deliver as approved templates'}
-                          />
-                          {timeShort(c.last_message_at)}
-                        </span>
+                {g.items.map((c) => {
+                  const name = c.display_name || '+' + c.wa_phone
+                  const win = windowInfo(c).open
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => onSelect(c.id)}
+                      className={`w-full flex items-center gap-3 pl-3 pr-0 text-left hover:bg-wa-hover transition-colors ${selectedId === c.id ? 'bg-wa-hover' : ''}`}
+                    >
+                      <div className="relative shrink-0">
+                        <div
+                          className="w-12 h-12 rounded-full grid place-items-center text-white/90 text-lg font-medium"
+                          style={{ backgroundColor: avatarColor(name) }}
+                        >
+                          {name.replace('+', '').slice(0, 1).toUpperCase()}
+                        </div>
+                        {/* 24h window state as a presence dot: green = open (free replies), amber = closed */}
+                        <span
+                          className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-wa-panel ${win ? 'bg-wa-green' : 'bg-amber-500'}`}
+                          title={win ? 'Window open — replies are free' : 'Window closed — replies deliver as approved templates'}
+                        />
                       </div>
-                      <div className="flex justify-between items-center gap-2 mt-0.5">
-                        <span className="truncate text-sm text-wa-muted inline-flex items-center gap-1 min-w-0">
-                          {c.last_message_direction === 'outbound' && (
-                            <span className="shrink-0 inline-flex"><Ticks status={c.last_message_status} /></span>
+                      <div className="min-w-0 flex-1 py-2.5 pr-3 border-b border-wa-border/40">
+                        <div className="flex justify-between items-baseline gap-2">
+                          <span className="truncate text-[15px] text-wa-text">{name}</span>
+                          <span className={`text-[11px] shrink-0 ${c.unread_count > 0 ? 'text-wa-green font-medium' : 'text-wa-muted'}`}>
+                            {timeShort(c.last_message_at)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center gap-2 mt-0.5">
+                          <span className="truncate text-[13px] text-wa-muted inline-flex items-center gap-1 min-w-0">
+                            {c.last_message_direction === 'outbound' && (
+                              <span className="shrink-0 inline-flex"><Ticks status={c.last_message_status} /></span>
+                            )}
+                            <span className="truncate">{c.last_message_preview || (g.isStray ? '+' + c.wa_phone : '')}</span>
+                          </span>
+                          {c.unread_count > 0 && (
+                            <span className="bg-wa-green text-black text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 grid place-items-center shrink-0">{c.unread_count}</span>
                           )}
-                          <span className="truncate">{c.last_message_preview || (g.isStray ? '+' + c.wa_phone : '')}</span>
-                        </span>
-                        {c.unread_count > 0 && (
-                          <span className="bg-wa-green text-black text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 grid place-items-center shrink-0">{c.unread_count}</span>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  )
+                })}
               </div>
             ))}
             {rosterGaps.length > 0 && !query && (
@@ -288,15 +289,16 @@ function SkeletonRows() {
   )
 }
 
+// WhatsApp-web-style filter pill: outlined when idle, dim-green fill when active.
 function FilterPill({ active, onClick, unread, children }: { active: boolean; onClick: () => void; unread?: number; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1 rounded-full text-xs whitespace-nowrap shrink-0 transition-colors inline-flex items-center gap-1.5 ${active ? 'bg-wa-green text-black font-medium' : 'bg-wa-header text-wa-muted hover:text-wa-text'}`}
+      className={`px-3 py-1 rounded-full text-xs whitespace-nowrap shrink-0 transition-colors inline-flex items-center gap-1.5 border ${active ? 'bg-wa-green/15 text-wa-green border-transparent font-medium' : 'bg-transparent text-wa-muted border-wa-border/80 hover:bg-wa-header'}`}
     >
       {children}
       {(unread ?? 0) > 0 && (
-        <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold grid place-items-center ${active ? 'bg-black/20 text-black' : 'bg-wa-green text-black'}`}>
+        <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold grid place-items-center ${active ? 'bg-wa-green text-black' : 'bg-wa-green text-black'}`}>
           {unread}
         </span>
       )}

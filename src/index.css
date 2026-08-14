@@ -15,8 +15,23 @@ input, textarea, select { font-size: 16px; }
   .safe-b { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
 }
 
-/* WhatsApp-style chat backdrop */
-.wa-chat-bg { background-color: #0b141a; }
+/* WhatsApp-web-style doodle backdrop — subtle inline pattern, fully self-contained. */
+.wa-chat-bg {
+  background-color: #0b141a;
+  background-image: url("data:image/svg+xml,%3Csvg width='260' height='260' viewBox='0 0 260 260' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23182229' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='30' cy='40' r='6'/%3E%3Cpath d='M90 25l6 6m0-6l-6 6'/%3E%3Ccircle cx='200' cy='60' r='8'/%3E%3Cpath d='M140 100c6-8 14-8 20 0'/%3E%3Crect x='40' y='140' width='12' height='12' rx='3'/%3E%3Cpath d='M220 150l7 7m0-7l-7 7'/%3E%3Ccircle cx='110' cy='190' r='5'/%3E%3Cpath d='M170 220c5-6 11-6 16 0'/%3E%3Ccircle cx='60' cy='230' r='7'/%3E%3Cpath d='M230 30c-6 4-6 10 0 14'/%3E%3Cpath d='M15 105c4-5 9-5 13 0'/%3E%3Crect x='150' y='35' width='10' height='10' rx='2'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* WhatsApp-style bubble tails: the first bubble of each run gets a corner sweep. */
+.msg-tail-in { border-top-left-radius: 0 !important; }
+.msg-tail-in::before {
+  content: ""; position: absolute; top: 0; left: -8px;
+  border-top: 12px solid #202c33; border-left: 8px solid transparent;
+}
+.msg-tail-out { border-top-right-radius: 0 !important; }
+.msg-tail-out::before {
+  content: ""; position: absolute; top: 0; right: -8px;
+  border-top: 12px solid #005c4b; border-right: 8px solid transparent;
+}
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: #374248; border-radius: 3px; }

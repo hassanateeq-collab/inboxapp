@@ -1,7 +1,7 @@
 import { Suspense, lazy, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { windowInfo, type Conversation, type InboxIdentity, type Message } from '../types'
-import { sourceLabel, digits } from '../lib/labels'
+import { sourceLabel, digits, avatarColor } from '../lib/labels'
 import MessageList from './MessageList'
 
 const LinkRoomModal = lazy(() => import('./LinkRoomModal'))
@@ -386,7 +386,10 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
         <button onClick={onBack} className="md:hidden text-wa-muted p-1" aria-label="Back">
           <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
-        <div className="w-10 h-10 rounded-full bg-wa-panel grid place-items-center text-wa-muted font-medium shrink-0">
+        <div
+          className="w-10 h-10 rounded-full grid place-items-center text-white/90 font-medium shrink-0"
+          style={{ backgroundColor: avatarColor(title) }}
+        >
           {title.replace('+', '').slice(0, 1).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
@@ -530,18 +533,19 @@ const Composer = memo(function Composer({ onSend, onSendFile, onOpenTemplates, w
     <div className="flex items-end gap-2">
       <input ref={fileRef} type="file" className="hidden" onChange={onPick}
         accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf,.doc,.docx,.xls,.xlsx" />
-      <button onClick={onOpenTemplates}
-        className={`h-11 px-3 rounded-full grid place-items-center shrink-0 text-xs font-semibold ${windowOpen ? 'text-wa-muted hover:text-wa-text bg-wa-search' : 'bg-wa-green text-black'}`}
-        aria-label="Send a template" title="Send a template">
-        Templates
-      </button>
       <button onClick={() => fileRef.current?.click()}
         disabled={!windowOpen}
         title={windowOpen ? 'Attach' : "Window closed — photos and files can only be sent after the guest's next message"}
-        className="w-11 h-11 rounded-full text-wa-muted hover:text-wa-text grid place-items-center shrink-0 disabled:opacity-35 disabled:hover:text-wa-muted" aria-label="Attach">
-        <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-          <path d="M21.4 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.2-9.19a4 4 0 015.65 5.66l-9.2 9.19a2 2 0 01-2.82-2.83l8.49-8.48" />
+        className="w-11 h-11 rounded-full text-wa-muted hover:text-wa-text hover:bg-wa-search grid place-items-center shrink-0 transition-colors disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-wa-muted" aria-label="Attach">
+        {/* WhatsApp-web-style plus */}
+        <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
         </svg>
+      </button>
+      <button onClick={onOpenTemplates}
+        className={`h-9 px-3.5 rounded-full grid place-items-center shrink-0 text-[12.5px] font-semibold transition-colors ${windowOpen ? 'text-wa-muted hover:text-wa-text bg-wa-search' : 'bg-wa-green text-black'}`}
+        aria-label="Send a template" title="Send an approved template">
+        Templates
       </button>
       <textarea
         ref={taRef}

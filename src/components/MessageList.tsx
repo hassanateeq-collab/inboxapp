@@ -76,13 +76,13 @@ function MediaBlock({ m }: { m: Message }) {
   return null
 }
 
-function Bubble({ m, onRetry }: { m: Message; onRetry: (id: string) => void }) {
+function Bubble({ m, tail, onRetry }: { m: Message; tail: boolean; onRetry: (id: string) => void }) {
   const out = m.direction === 'outbound'
   const hasMedia = !!m.media_url && ['image', 'sticker', 'audio', 'voice', 'ptt', 'document'].includes(m.msg_type)
   const showBodyText = !!m.body && !(m.msg_type === 'document' && hasMedia)
   return (
-    <div className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[82%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm ${out ? 'bg-wa-bubbleOut' : 'bg-wa-bubbleIn'}`}>
+    <div className={`flex ${out ? 'justify-end' : 'justify-start'} px-2`}>
+      <div className={`relative max-w-[82%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm ${out ? 'bg-wa-bubbleOut' : 'bg-wa-bubbleIn'} ${tail ? (out ? 'msg-tail-out' : 'msg-tail-in') : ''}`}>
         {hasMedia && <MediaBlock m={m} />}
         {showBodyText && <span className="whitespace-pre-wrap break-words">{m.body}</span>}
         {!hasMedia && !showBodyText && (
@@ -129,7 +129,7 @@ function SkeletonBubbles() {
 
 type Row =
   | { kind: 'divider'; key: string; label: string }
-  | { kind: 'msg'; key: string; msg: Message }
+  | { kind: 'msg'; key: string; msg: Message; tail: boolean }
 
 type Props = {
   messages: Message[]
@@ -151,13 +151,17 @@ function MessageListInner({ messages, loading, loadingOlder, hasMore, onLoadOlde
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = []
     let lastDay = ''
+    let lastDir: string | null = null
     for (const m of messages) {
       const k = dayKey(m.created_at)
       if (k !== lastDay) {
         out.push({ kind: 'divider', key: 'day-' + k, label: dayLabel(m.created_at) })
         lastDay = k
+        lastDir = null
       }
-      out.push({ kind: 'msg', key: m.id, msg: m })
+      // WhatsApp parity: the first bubble of each same-direction run carries the tail.
+      out.push({ kind: 'msg', key: m.id, msg: m, tail: m.direction !== lastDir })
+      lastDir = m.direction
     }
     return out
   }, [messages])
@@ -242,7 +246,7 @@ function MessageListInner({ messages, loading, loadingOlder, hasMore, onLoadOlde
               </div>
             )}
             {rows.map((r) =>
-              r.kind === 'divider' ? <DayDivider key={r.key} label={r.label} /> : <Bubble key={r.key} m={r.msg} onRetry={onRetry} />,
+              r.kind === 'divider' ? <DayDivider key={r.key} label={r.label} /> : <Bubble key={r.key} m={r.msg} tail={r.tail} onRetry={onRetry} />,
             )}
             {!loading && messages.length === 0 && (
               <p className="text-wa-muted text-sm text-center pt-8">No messages yet.</p>
