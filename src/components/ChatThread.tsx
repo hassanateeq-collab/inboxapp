@@ -456,6 +456,8 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
         <WindowChip open={win.open} expiresAt={win.expiresAt} />
       </div>
 
+      <JoinRequestStrip phone={conversation.wa_phone} staffLabel={signature || 'Inbox'} onOutcome={(msg) => setInfo(msg)} />
+
       <MessageList
         messages={messages}
         loading={loading}
@@ -521,6 +523,85 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
         </Suspense>
       )}
     </>
+  )
+}
+
+// Room QR join request for this number (Hassan 2026-08-14): reception can Approve/Decline
+// right here — same engine as the Slack card and the primary guest's WhatsApp buttons
+// (room-join-decide; first decision wins). Polls every 30s while the thread is open.
+function JoinRequestStrip({ phone, staffLabel, onOutcome }: { phone: string; staffLabel: string; onOutcome: (msg: string) => void }) {
+  const [req, setReq] = useState<{ id: string; status: string; room_number: string; claimed_name: string | null } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    async function load() {
+      const { data } = await supabase
+        .from('room_join_requests')
+        .select('id, status, room_number, claimed_name')
+        .eq('requester_phone', phone)
+        .in('status', ['awaiting_name', 'pending'])
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (active) setReq((data as any) ?? null)
+    }
+    void load()
+    const t = setInterval(load, 30_000)
+    return () => { active = false; clearInterval(t) }
+  }, [phone])
+
+  const decide = useCallback(async (decision: 'approve' | 'decline') => {
+    if (!req || busy) return
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('room-join-decide', {
+        body: { request_id: req.id, decision, actor: 'reception', channel: 'inbox', actor_label: `${staffLabel} (Inbox)` },
+      })
+      const out: any = data || {}
+      if (error) throw new Error(error.message)
+      if (out.status === 'approved') onOutcome(`Connected to Room ${out.room_number} — the guest has been notified.`)
+      else if (out.status === 'declined') onOutcome('Declined — the guest was told to visit reception if this is a mistake.')
+      else if (out.status === 'already_decided') onOutcome(`Already ${out.current}${out.decided_by === 'primary_guest' ? ' — the primary guest answered on WhatsApp first' : ''}.`)
+      else if (out.status === 'room_full') onOutcome('Room is at its WhatsApp connection limit — detach someone from the roster first.')
+      else if (out.status === 'expired') onOutcome('This request expired — ask the guest to scan the room QR again.')
+      else onOutcome(out.error || 'Could not decide — try again.')
+      setReq(null)
+    } catch (e: any) {
+      onOutcome(e?.message || 'Could not decide — try again.')
+    } finally {
+      setBusy(false)
+    }
+  }, [req, busy, staffLabel, onOutcome])
+
+  if (!req) return null
+  if (req.status === 'awaiting_name') {
+    return (
+      <div className="bg-wa-header text-wa-muted text-[11px] px-4 py-1.5">
+        Scanned the Room {req.room_number} QR — waiting for them to reply with the booking name.
+      </div>
+    )
+  }
+  return (
+    <div className="bg-wa-green/10 border-b border-wa-green/25 px-4 py-2.5 flex items-center gap-3 flex-wrap">
+      <div className="min-w-0 flex-1 text-xs text-wa-text">
+        <span className="font-semibold">Room join request</span>
+        {' — '}
+        <span className="font-medium">{req.claimed_name || 'Guest'}</span> wants to be connected to Room {req.room_number}.
+        <span className="text-wa-muted"> The primary guest was also asked on WhatsApp — the first decision wins.</span>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button onClick={() => decide('approve')} disabled={busy}
+          className="px-3.5 h-8 rounded-full bg-wa-green text-black text-xs font-semibold disabled:opacity-50">
+          Approve
+        </button>
+        <button onClick={() => decide('decline')} disabled={busy}
+          className="px-3.5 h-8 rounded-full bg-red-900/60 text-red-100 text-xs font-semibold disabled:opacity-50">
+          Decline
+        </button>
+      </div>
+    </div>
   )
 }
 
