@@ -58,6 +58,7 @@ export default function ConversationList({
   conversations, loading, selectedId, onSelect, userEmail, onLogout,
   propertyOptions, propertyFilter, onFilterChange,
   stayFilter, onStayFilterChange, unreadByState, rosterGaps,
+  onStartChat, gapBusyId, gapError,
 }: {
   conversations: Conversation[]
   loading: boolean
@@ -72,6 +73,9 @@ export default function ConversationList({
   onStayFilterChange: (v: StayState | 'all') => void
   unreadByState: Record<StayState, number>
   rosterGaps: RosterEntry[]
+  onStartChat: (r: RosterEntry) => void
+  gapBusyId: string | null
+  gapError: string | null
 }) {
   const [query, setQuery] = useState('')
 
@@ -237,10 +241,22 @@ export default function ConversationList({
                     Not connected to WhatsApp ({rosterGaps.length})
                   </div>
                 </div>
+                {gapError && (
+                  <div className="mx-3 my-2 px-3 py-2 rounded-lg bg-red-900/40 border border-red-800/60 text-red-200 text-xs">
+                    {gapError}
+                  </div>
+                )}
                 {rosterGaps.map((r) => {
                   const reason = gapReason(r)
+                  const busy = gapBusyId === r.booking_id
                   return (
-                    <div key={r.booking_id} className="flex items-center gap-3 px-3 py-2.5 border-b border-wa-border/30 opacity-90">
+                    <button
+                      key={r.booking_id}
+                      onClick={() => onStartChat(r)}
+                      disabled={gapBusyId !== null}
+                      className="w-full text-left flex items-center gap-3 px-3 py-2.5 border-b border-wa-border/30 opacity-90 hover:opacity-100 hover:bg-wa-hover transition-colors disabled:cursor-wait"
+                      title="Open a chat and send an approved template to this guest"
+                    >
                       <div className="w-11 h-11 rounded-full border border-dashed border-wa-border grid place-items-center text-wa-muted text-xs font-medium shrink-0">
                         {(r.room_number || '?').slice(0, 4)}
                       </div>
@@ -261,7 +277,10 @@ export default function ConversationList({
                           {r.primary_number && <span className="text-xs text-wa-muted truncate">{r.primary_number}</span>}
                         </div>
                       </div>
-                    </div>
+                      <span className={`shrink-0 text-[11px] font-semibold ${busy ? 'text-wa-muted' : 'text-wa-green'}`}>
+                        {busy ? 'Opening…' : 'Message →'}
+                      </span>
+                    </button>
                   )
                 })}
               </div>

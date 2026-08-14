@@ -123,6 +123,25 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
     return () => clearTimeout(t)
   }, [info])
 
+  // Clear "wrong number" signal (Hassan 2026-08-14): when the newest outbound send failed
+  // and Meta's receipt says 131026 (undeliverable / not a WhatsApp number), say so plainly.
+  const [deliveryIssue, setDeliveryIssue] = useState<string | null>(null)
+  useEffect(() => {
+    const lastOut = [...messages].reverse().find((m) => m.direction === 'outbound' && !isTempId(m.id))
+    if (!lastOut || lastOut.status !== 'failed') { setDeliveryIssue(null); return }
+    let active = true
+    supabase.from('guest_messages').select('payload').eq('id', lastOut.id).maybeSingle().then(({ data }) => {
+      if (!active) return
+      const code = (data as any)?.payload?.delivery_errors?.[0]?.code
+      if (code === 131026) {
+        setDeliveryIssue(`This number (+${conversation.wa_phone}) is not on WhatsApp — it may be wrong or have no WhatsApp account. Ask the guest for their WhatsApp number and update it on the folio.`)
+      } else {
+        setDeliveryIssue(null)
+      }
+    })
+    return () => { active = false }
+  }, [messages, conversation.wa_phone])
+
   // WhatsApp parity: when staff have the thread open, relay a read receipt for the newest
   // inbound message so the guest sees blue ticks. Once per wamid.
   const markedReadRef = useRef<Set<string>>(new Set())
@@ -448,6 +467,11 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
         canReact={win.open}
       />
 
+      {deliveryIssue && (
+        <div className="bg-red-900/70 text-red-100 text-xs px-4 py-2.5 font-medium">
+          {deliveryIssue}
+        </div>
+      )}
       {error && <div className="bg-red-900/60 text-red-200 text-xs px-4 py-2">{error}</div>}
       {info && <div className="bg-wa-header text-wa-muted text-xs px-4 py-2">{info}</div>}
       {!win.open && !error && !info && (

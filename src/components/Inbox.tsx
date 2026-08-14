@@ -253,6 +253,29 @@ export default function Inbox({ session }: { session: Session }) {
     return () => { active = false; clearInterval(t) }
   }, [])
 
+  // Tap a "Not connected" roster row → create/relink the conversation for the booking's
+  // primary number and open it, so staff can fire an approved template right away.
+  // Bad numbers come back with a clear reason instead of a dead chat.
+  const [gapBusy, setGapBusy] = useState<string | null>(null)
+  const [gapError, setGapError] = useState<string | null>(null)
+  const startChat = useCallback(async (r: RosterEntry) => {
+    setGapError(null)
+    setGapBusy(r.booking_id)
+    try {
+      const { data, error } = await (supabase as any).rpc('pms_start_conversation', { p_booking_id: r.booking_id })
+      const res = data as any
+      if (error || !res?.ok) {
+        setGapError(res?.error || error?.message || 'Could not open a chat for this room.')
+        return
+      }
+      await fetchConversationRow(res.conversation_id)
+      selectedIdRef.current = res.conversation_id
+      setSelectedId(res.conversation_id)
+    } finally {
+      setGapBusy(null)
+    }
+  }, [fetchConversationRow])
+
   // In-house bookings that have no conversation yet — the reachability gaps reception must fix.
   const rosterGaps = useMemo(() => {
     const withConv = new Set(conversations.map((c) => c.booking_id).filter(Boolean))
@@ -314,6 +337,9 @@ export default function Inbox({ session }: { session: Session }) {
           onStayFilterChange={setStayFilter}
           unreadByState={unreadByState}
           rosterGaps={stayFilter === 'inhouse' ? rosterGaps : []}
+          onStartChat={startChat}
+          gapBusyId={gapBusy}
+          gapError={gapError}
         />
       </div>
       <div className={`${selected ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>
