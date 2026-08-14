@@ -2,6 +2,8 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Message } from '../types'
 import { Ticks } from './Ticks'
 
+const REACT_EMOJIS = ['👍', '❤️', '😂', '😮', '🙏', '✅']
+
 const NEAR_BOTTOM_PX = 120
 const LOAD_OLDER_PX = 80
 
@@ -76,12 +78,21 @@ function MediaBlock({ m }: { m: Message }) {
   return null
 }
 
-function Bubble({ m, tail, onRetry }: { m: Message; tail: boolean; onRetry: (id: string) => void }) {
+function Bubble({ m, tail, onRetry, onReact, canReact }: {
+  m: Message
+  tail: boolean
+  onRetry: (id: string) => void
+  onReact: (m: Message, emoji: string) => void
+  canReact: boolean
+}) {
   const out = m.direction === 'outbound'
   const hasMedia = !!m.media_url && ['image', 'sticker', 'audio', 'voice', 'ptt', 'document'].includes(m.msg_type)
   const showBodyText = !!m.body && !(m.msg_type === 'document' && hasMedia)
+  const reactions = m.reactions && Object.keys(m.reactions).length > 0 ? m.reactions : null
+  const [pick, setPick] = useState(false)
+  const showReactBtn = !out && canReact && !!m.wa_message_id
   return (
-    <div className={`flex ${out ? 'justify-end' : 'justify-start'} px-2`}>
+    <div className={`group flex items-center ${out ? 'justify-end' : 'justify-start'} px-2 ${reactions ? 'mb-3' : ''}`}>
       <div className={`relative max-w-[82%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm ${out ? 'bg-wa-bubbleOut' : 'bg-wa-bubbleIn'} ${tail ? (out ? 'msg-tail-out' : 'msg-tail-in') : ''}`}>
         {hasMedia && <MediaBlock m={m} />}
         {showBodyText && <span className="whitespace-pre-wrap break-words">{m.body}</span>}
@@ -98,7 +109,46 @@ function Bubble({ m, tail, onRetry }: { m: Message; tail: boolean; onRetry: (id:
             <button onClick={() => onRetry(m.id)} className="underline underline-offset-2 hover:text-red-200">Retry</button>
           </div>
         )}
+        {/* WhatsApp-style reaction chip(s) overlapping the bubble's bottom edge */}
+        {reactions && (
+          <div className={`absolute -bottom-3.5 ${out ? 'right-1' : 'left-1'} flex gap-0.5 z-[1]`}>
+            {Object.entries(reactions).map(([who, e]) => (
+              <button
+                key={who}
+                onClick={() => { if (who === 'staff' && canReact) onReact(m, e) }}
+                title={who === 'staff' ? 'Your reaction — tap to remove' : "Guest's reaction"}
+                className={`bg-wa-header border border-wa-border rounded-full px-1.5 py-0.5 text-[13px] leading-none shadow ${who === 'staff' && canReact ? 'cursor-pointer' : 'cursor-default'}`}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      {/* Hover react button (guest messages, window open) — like WhatsApp's hover smiley */}
+      {showReactBtn && (
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setPick((v) => !v)}
+            className="w-7 h-7 ml-1.5 rounded-full bg-wa-header text-wa-muted hover:text-wa-text grid place-items-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            aria-label="React"
+          >
+            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <circle cx="12" cy="12" r="9" /><path d="M8.5 14.5c1 1.2 2.2 1.8 3.5 1.8s2.5-.6 3.5-1.8M9 10h.01M15 10h.01" />
+            </svg>
+          </button>
+          {pick && (
+            <div className="absolute bottom-9 left-0 z-20 flex gap-1.5 bg-wa-header border border-wa-border rounded-full px-2.5 py-1.5 shadow-xl">
+              {REACT_EMOJIS.map((e) => (
+                <button key={e} className="text-[17px] leading-none hover:scale-125 transition-transform"
+                  onClick={() => { setPick(false); onReact(m, e) }}>
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -138,9 +188,11 @@ type Props = {
   hasMore: boolean
   onLoadOlder: () => void
   onRetry: (id: string) => void
+  onReact: (m: Message, emoji: string) => void
+  canReact: boolean
 }
 
-function MessageListInner({ messages, loading, loadingOlder, hasMore, onLoadOlder, onRetry }: Props) {
+function MessageListInner({ messages, loading, loadingOlder, hasMore, onLoadOlder, onRetry, onReact, canReact }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [showChip, setShowChip] = useState(false)
   const atBottomRef = useRef(true)
@@ -153,6 +205,8 @@ function MessageListInner({ messages, loading, loadingOlder, hasMore, onLoadOlde
     let lastDay = ''
     let lastDir: string | null = null
     for (const m of messages) {
+      // Legacy standalone reaction rows (pre-v16 webhook) render on the target message now.
+      if (m.msg_type === 'reaction') continue
       const k = dayKey(m.created_at)
       if (k !== lastDay) {
         out.push({ kind: 'divider', key: 'day-' + k, label: dayLabel(m.created_at) })
@@ -246,7 +300,7 @@ function MessageListInner({ messages, loading, loadingOlder, hasMore, onLoadOlde
               </div>
             )}
             {rows.map((r) =>
-              r.kind === 'divider' ? <DayDivider key={r.key} label={r.label} /> : <Bubble key={r.key} m={r.msg} tail={r.tail} onRetry={onRetry} />,
+              r.kind === 'divider' ? <DayDivider key={r.key} label={r.label} /> : <Bubble key={r.key} m={r.msg} tail={r.tail} onRetry={onRetry} onReact={onReact} canReact={canReact} />,
             )}
             {!loading && messages.length === 0 && (
               <p className="text-wa-muted text-sm text-center pt-8">No messages yet.</p>

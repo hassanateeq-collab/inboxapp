@@ -10,7 +10,7 @@ const TemplateSheet = lazy(() => import('./TemplateSheet'))
 const SIG_KEY = 'hamsun_inbox_signature'
 const PAGE_SIZE = 50
 // Every column the thread renders from guest_messages (skips the heavy payload jsonb).
-const MSG_COLS = 'id, conversation_id, wa_message_id, direction, sender, msg_type, body, media_url, status, created_at'
+const MSG_COLS = 'id, conversation_id, wa_message_id, direction, sender, msg_type, body, media_url, status, created_at, reactions'
 
 // In-memory per-conversation cache so reopening a thread renders instantly (no flash).
 const messageCache = new Map<string, Message[]>()
@@ -43,6 +43,7 @@ function toMessage(r: any): Message {
     media_url: r.media_url ?? null,
     status: r.status ?? null,
     created_at: r.created_at,
+    reactions: r.reactions ?? null,
   }
 }
 
@@ -306,6 +307,7 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
       media_url: URL.createObjectURL(file),
       status: 'sending',
       created_at: new Date().toISOString(),
+      reactions: null,
     }
     setMessages((prev) => [...prev, temp])
     try {
@@ -339,6 +341,7 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
       media_url: null,
       status: 'sending',
       created_at: new Date().toISOString(),
+      reactions: null,
     }
     setMessages((prev) => [...prev, temp])
     void deliver(temp.id, body)
@@ -357,6 +360,29 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
       })
     }
   }, [conversation.id, deliver])
+
+  // v5: staff reaction to a guest message. Optimistic; tapping the same emoji removes it.
+  const handleReact = useCallback(async (m: Message, emoji: string) => {
+    if (!m.wa_message_id) return
+    const before = m.reactions ?? null
+    const next = before?.staff === emoji ? '' : emoji
+    setMessages((prev) => prev.map((x) => {
+      if (x.id !== m.id) return x
+      const reactions: Record<string, string> = { ...(x.reactions || {}) }
+      if (next) reactions.staff = next; else delete reactions.staff
+      return { ...x, reactions: Object.keys(reactions).length ? reactions : null }
+    }))
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-send', {
+        body: { action: 'react', conversation_id: conversation.id, message_id: m.wa_message_id, emoji: next },
+      })
+      const errMsg = (data as any)?.error || error?.message
+      if (errMsg) throw new Error(String(errMsg))
+    } catch (e: any) {
+      setError(e?.message || 'Reaction failed')
+      setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, reactions: before } : x)))
+    }
+  }, [conversation.id])
 
   const retry = useCallback((id: string) => {
     const m = messagesRef.current.find((x) => x.id === id)
@@ -418,6 +444,8 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
         hasMore={hasMore}
         onLoadOlder={loadOlder}
         onRetry={retry}
+        onReact={handleReact}
+        canReact={win.open}
       />
 
       {error && <div className="bg-red-900/60 text-red-200 text-xs px-4 py-2">{error}</div>}

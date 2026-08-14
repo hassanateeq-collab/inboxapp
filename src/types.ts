@@ -37,6 +37,8 @@ export interface Message {
   media_url: string | null
   status: string | null
   created_at: string
+  // {"guest": "emoji"} = guest reacted to this message, {"staff": "emoji"} = we reacted.
+  reactions: Record<string, string> | null
 }
 
 export interface InboxIdentity {
