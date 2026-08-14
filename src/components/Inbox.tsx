@@ -12,22 +12,28 @@ const CONV_COLS =
   'booking_source, booking_name, beds24_booking_id, checkin_status, check_in, check_out, tier, ' +
   'last_message_direction, last_message_status'
 
-// Short WebAudio ping for new inbound messages (no asset needed).
-function playPing() {
+// Long, loud three-tone alarm (~2.5s) — fired on new inbound and repeated every minute
+// while anything sits unread, so reception can't miss a message even with the app in the
+// background (Hassan 2026-08-14: "it should alert properly so that nothing is missed").
+function playAlarm() {
   try {
     const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
     if (!Ctx) return
     const ctx = new Ctx()
-    const o = ctx.createOscillator()
-    const g = ctx.createGain()
-    o.connect(g); g.connect(ctx.destination)
-    o.type = 'sine'; o.frequency.value = 880
-    g.gain.setValueAtTime(0.0001, ctx.currentTime)
-    g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01)
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3)
-    o.start()
-    o.stop(ctx.currentTime + 0.33)
-    o.onended = () => ctx.close()
+    const notes = [660, 880, 660, 880, 990]
+    notes.forEach((freq, i) => {
+      const o = ctx.createOscillator()
+      const g = ctx.createGain()
+      o.connect(g); g.connect(ctx.destination)
+      o.type = 'sine'; o.frequency.value = freq
+      const t0 = ctx.currentTime + i * 0.5
+      g.gain.setValueAtTime(0.0001, t0)
+      g.gain.exponentialRampToValueAtTime(0.4, t0 + 0.03)
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.45)
+      o.start(t0)
+      o.stop(t0 + 0.5)
+    })
+    setTimeout(() => ctx.close().catch(() => {}), notes.length * 500 + 300)
   } catch { /* ignore */ }
 }
 
@@ -116,11 +122,13 @@ export default function Inbox({ session }: { session: Session }) {
   const notify = useCallback((title: string, body: string) => {
     try {
       if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-        const n = new Notification(title, { body, tag: 'hamsun-inbox' })
+        // requireInteraction keeps the banner on screen until dismissed; renotify re-alerts
+        // even though the tag replaces the previous banner instead of stacking.
+        const n = new Notification(title, { body, tag: 'hamsun-inbox', requireInteraction: true, renotify: true } as NotificationOptions)
         n.onclick = () => { window.focus(); n.close() }
       }
     } catch { /* ignore */ }
-    playPing()
+    playAlarm()
   }, [])
 
   useEffect(() => {
@@ -198,7 +206,31 @@ export default function Inbox({ session }: { session: Session }) {
   }, [loadConversations, notify, mergeConversation, fetchConversationRow])
 
   const totalUnread = useMemo(() => conversations.reduce((s, c) => s + (c.unread_count || 0), 0), [conversations])
-  useEffect(() => { document.title = totalUnread > 0 ? `(${totalUnread}) Hamsun Inbox` : 'Hamsun Inbox' }, [totalUnread])
+
+  // Repeat-until-opened alarm: while anything is unread, re-sound every 60s and flash the
+  // tab title, so a missed first alert can't stay missed. Stops the moment the thread opens.
+  useEffect(() => {
+    if (totalUnread === 0) { document.title = 'Hamsun Inbox'; return }
+    document.title = `(${totalUnread}) Hamsun Inbox`
+    let flip = false
+    const flash = setInterval(() => {
+      flip = !flip
+      document.title = flip ? `🔴 (${totalUnread}) NEW MESSAGE` : `(${totalUnread}) Hamsun Inbox`
+    }, 1500)
+    const rering = setInterval(() => {
+      playAlarm()
+      try {
+        if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+          const n = new Notification(`${totalUnread} unread WhatsApp message${totalUnread > 1 ? 's' : ''}`, {
+            body: 'Guests are waiting for a reply — open the Hamsun Inbox.',
+            tag: 'hamsun-inbox', requireInteraction: true, renotify: true,
+          } as NotificationOptions)
+          n.onclick = () => { window.focus(); n.close() }
+        }
+      } catch { /* ignore */ }
+    }, 60_000)
+    return () => { clearInterval(flash); clearInterval(rering); document.title = 'Hamsun Inbox' }
+  }, [totalUnread])
 
   const propertyOptions = useMemo(() => {
     const map = new Map<string, string>()

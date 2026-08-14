@@ -62,6 +62,39 @@ export interface RosterEntry {
   status: string
 }
 
+// Meta's 24h customer-service window, derived client-side from last_inbound_at so it stays
+// fresh with realtime updates (the DB view exposes the same via window_open/window_expires_at).
+// Open = free-form replies allowed; closed = text auto-delivers as the approved template,
+// media cannot be sent, and only APPROVED templates are sendable from the picker.
+export function windowInfo(c: Pick<Conversation, 'last_inbound_at'>): { open: boolean; expiresAt: number | null } {
+  if (!c.last_inbound_at) return { open: false, expiresAt: null }
+  const expiresAt = Date.parse(c.last_inbound_at) + 24 * 60 * 60 * 1000
+  return { open: Date.now() < expiresAt, expiresAt }
+}
+
+// One row from whatsapp-send { action: 'list_templates' } — the manual template picker.
+// sendable_now mirrors the server rule: approved Meta templates any time; freeform snippets
+// (e.g. the direct breakfast link) and not-yet-approved copy only while the window is open.
+export interface InboxTemplateVar {
+  n: number
+  label: string | null
+  auto: string | null
+  value: string | null
+  needs_input: boolean
+}
+export interface InboxTemplate {
+  logical_key: string
+  template_name: string
+  language: string
+  body_text: string | null
+  variables: InboxTemplateVar[]
+  ready: boolean
+  send_kind: 'template' | 'freeform'
+  meta_status: string
+  window_open: boolean
+  sendable_now: boolean
+}
+
 // Which tab a conversation belongs to. Unknown = not linked to any booking (join requests,
 // booking inquiries, cold inbound); the rest follow the linked booking's check-in state.
 export type StayState = 'inhouse' | 'arriving' | 'past' | 'unknown'

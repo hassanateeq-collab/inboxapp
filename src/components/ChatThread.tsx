@@ -1,10 +1,11 @@
 import { Suspense, lazy, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { supabase } from '../lib/supabase'
-import type { Conversation, InboxIdentity, Message } from '../types'
+import { windowInfo, type Conversation, type InboxIdentity, type Message } from '../types'
 import { sourceLabel, digits } from '../lib/labels'
 import MessageList from './MessageList'
 
 const LinkRoomModal = lazy(() => import('./LinkRoomModal'))
+const TemplateSheet = lazy(() => import('./TemplateSheet'))
 
 const SIG_KEY = 'hamsun_inbox_signature'
 const PAGE_SIZE = 50
@@ -85,7 +86,17 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
   const [roomPhones, setRoomPhones] = useState<string[]>([])
   const [sendAll, setSendAll] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
   const [nickname, setNickname] = useState<string>(() => localStorage.getItem(SIG_KEY) || '')
+
+  // 24h window state, re-derived every 30s so the countdown chip stays honest.
+  const [windowTick, setWindowTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setWindowTick((n) => n + 1), 30_000)
+    return () => clearInterval(t)
+  }, [])
+  void windowTick
+  const win = windowInfo(conversation)
 
   const signature = (nickname || identity?.first_name || identity?.full_name || '').trim()
 
@@ -394,6 +405,7 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
             </div>
           )}
         </div>
+        <WindowChip open={win.open} expiresAt={win.expiresAt} />
       </div>
 
       <MessageList
@@ -407,6 +419,11 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
 
       {error && <div className="bg-red-900/60 text-red-200 text-xs px-4 py-2">{error}</div>}
       {info && <div className="bg-wa-header text-wa-muted text-xs px-4 py-2">{info}</div>}
+      {!win.open && !error && !info && (
+        <div className="bg-amber-900/30 text-amber-200/90 text-[11px] px-4 py-1.5">
+          Window closed — text replies deliver as the approved update template; photos and files can be sent again after the guest's next message.
+        </div>
+      )}
 
       <div className="bg-wa-header px-3 pt-2 pb-2 safe-b shrink-0">
         <div className="flex items-center justify-between gap-2 text-[11px] text-wa-muted mb-1.5 px-1">
@@ -421,7 +438,12 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
             </label>
           )}
         </div>
-        <Composer onSend={handleSend} onSendFile={handleSendMedia} />
+        <Composer
+          onSend={handleSend}
+          onSendFile={handleSendMedia}
+          onOpenTemplates={() => setTemplatesOpen(true)}
+          windowOpen={win.open}
+        />
       </div>
 
       {linkOpen && (
@@ -434,12 +456,40 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
           />
         </Suspense>
       )}
+      {templatesOpen && (
+        <Suspense fallback={null}>
+          <TemplateSheet
+            conversation={conversation}
+            onClose={() => setTemplatesOpen(false)}
+            onSent={(msg) => setInfo(msg)}
+          />
+        </Suspense>
+      )}
     </>
   )
 }
 
+// Header chip: green while the guest's 24h free-form window is open (with countdown),
+// amber once closed. The composer + template picker behavior follows the same state.
+function WindowChip({ open, expiresAt }: { open: boolean; expiresAt: number | null }) {
+  if (open && expiresAt) {
+    const mins = Math.max(0, Math.round((expiresAt - Date.now()) / 60000))
+    const lbl = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`
+    return (
+      <span className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-wa-green/15 text-wa-green border border-wa-green/40 whitespace-nowrap">
+        Window OPEN · {lbl}
+      </span>
+    )
+  }
+  return (
+    <span className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/40 whitespace-nowrap">
+      Window CLOSED
+    </span>
+  )
+}
+
 // Composer owns its own text state so typing never re-renders the message list.
-const Composer = memo(function Composer({ onSend, onSendFile }: { onSend: (raw: string) => void; onSendFile: (file: File) => void }) {
+const Composer = memo(function Composer({ onSend, onSendFile, onOpenTemplates, windowOpen }: { onSend: (raw: string) => void; onSendFile: (file: File) => void; onOpenTemplates: () => void; windowOpen: boolean }) {
   const [text, setText] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -480,8 +530,15 @@ const Composer = memo(function Composer({ onSend, onSendFile }: { onSend: (raw: 
     <div className="flex items-end gap-2">
       <input ref={fileRef} type="file" className="hidden" onChange={onPick}
         accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf,.doc,.docx,.xls,.xlsx" />
+      <button onClick={onOpenTemplates}
+        className={`h-11 px-3 rounded-full grid place-items-center shrink-0 text-xs font-semibold ${windowOpen ? 'text-wa-muted hover:text-wa-text bg-wa-search' : 'bg-wa-green text-black'}`}
+        aria-label="Send a template" title="Send a template">
+        Templates
+      </button>
       <button onClick={() => fileRef.current?.click()}
-        className="w-11 h-11 rounded-full text-wa-muted hover:text-wa-text grid place-items-center shrink-0" aria-label="Attach">
+        disabled={!windowOpen}
+        title={windowOpen ? 'Attach' : "Window closed — photos and files can only be sent after the guest's next message"}
+        className="w-11 h-11 rounded-full text-wa-muted hover:text-wa-text grid place-items-center shrink-0 disabled:opacity-35 disabled:hover:text-wa-muted" aria-label="Attach">
         <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
           <path d="M21.4 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.2-9.19a4 4 0 015.65 5.66l-9.2 9.19a2 2 0 01-2.82-2.83l8.49-8.48" />
         </svg>
@@ -492,7 +549,7 @@ const Composer = memo(function Composer({ onSend, onSendFile }: { onSend: (raw: 
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        placeholder="Type a message"
+        placeholder={windowOpen ? 'Type a message' : 'Type a reply — delivers as approved template'}
         rows={1}
         className="flex-1 px-4 py-2.5 rounded-2xl bg-wa-search text-wa-text outline-none placeholder:text-wa-muted resize-none max-h-36 overflow-y-auto"
       />

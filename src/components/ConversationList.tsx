@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { stayStateOf, type Conversation, type RosterEntry, type StayState } from '../types'
+import { stayStateOf, windowInfo, type Conversation, type RosterEntry, type StayState } from '../types'
 import { sourceLabel, digits } from '../lib/labels'
 import { Ticks } from './Ticks'
 
@@ -204,7 +204,14 @@ export default function ConversationList({
                     <div className="min-w-0 flex-1">
                       <div className="flex justify-between items-baseline gap-2">
                         <span className="truncate font-medium">{c.display_name || '+' + c.wa_phone}</span>
-                        <span className="text-[11px] text-wa-muted shrink-0">{timeShort(c.last_message_at)}</span>
+                        <span className="text-[11px] text-wa-muted shrink-0 inline-flex items-center gap-1.5">
+                          {/* 24h window state: green = open (free replies), amber = closed (template only) */}
+                          <span
+                            className={`w-2 h-2 rounded-full ${windowInfo(c).open ? 'bg-wa-green' : 'bg-amber-500/80'}`}
+                            title={windowInfo(c).open ? 'Window open — replies are free' : 'Window closed — replies deliver as approved templates'}
+                          />
+                          {timeShort(c.last_message_at)}
+                        </span>
                       </div>
                       <div className="flex justify-between items-center gap-2 mt-0.5">
                         <span className="truncate text-sm text-wa-muted inline-flex items-center gap-1 min-w-0">
