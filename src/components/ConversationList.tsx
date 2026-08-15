@@ -14,6 +14,17 @@ function gapReason(r: RosterEntry): { label: string; cls: string } {
   return { label: 'No messages yet', cls: 'bg-wa-header text-wa-muted' }
 }
 
+// "today" / "tomorrow" / "19 Aug" — how far away an arriving guest's check-in is.
+function arriveLabel(checkIn: string | null): string {
+  if (!checkIn) return ''
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const d = new Date(checkIn + 'T00:00:00')
+  const diff = Math.round((d.getTime() - today.getTime()) / 86400000)
+  if (diff <= 0) return 'today'
+  if (diff === 1) return 'tomorrow'
+  return d.getDate() + ' ' + d.toLocaleString('en-GB', { month: 'short' })
+}
+
 function timeShort(ts: string | null) {
   if (!ts) return ''
   const d = new Date(ts)
@@ -157,6 +168,18 @@ export default function ConversationList({
         <FilterPill active={stayFilter === 'all'} onClick={() => onStayFilterChange('all')}>All</FilterPill>
       </div>
 
+      {stayFilter !== 'arriving' && unreadByState.arriving > 0 && (
+        <button
+          onClick={() => onStayFilterChange('arriving')}
+          className="w-full text-left px-3 py-2.5 bg-sky-500/15 border-y border-sky-500/30 hover:bg-sky-500/25 transition-colors flex items-center justify-between gap-2"
+        >
+          <span className="text-sky-200 text-xs font-medium">
+            {unreadByState.arriving} unread message{unreadByState.arriving > 1 ? 's' : ''} from arriving guests
+          </span>
+          <span className="text-sky-300 text-xs font-bold shrink-0">View →</span>
+        </button>
+      )}
+
       <div className="flex-1 overflow-y-auto">
         {loading && conversations.length === 0 ? (
           <SkeletonRows />
@@ -182,7 +205,11 @@ export default function ConversationList({
                       {g.property_label && <span>· {g.property_label}</span>}
                       {(g.checkIn || g.checkOut) && <span className="tabular-nums">· {fmtStayRange(g.checkIn, g.checkOut)}</span>}
                       {g.state === 'past' && <span className="text-amber-400/90">· departed</span>}
-                      {g.state === 'arriving' && <span className="text-sky-400/90">· arriving</span>}
+                      {g.state === 'arriving' && (
+                        <span className="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold uppercase tracking-wide text-[9.5px]">
+                          Arriving {arriveLabel(g.checkIn)}
+                        </span>
+                      )}
                       {g.booking_source && <span>· {sourceLabel(g.booking_source)}</span>}
                       {g.booking_name && <span className="truncate">· {g.booking_name}</span>}
                     </div>
@@ -212,7 +239,14 @@ export default function ConversationList({
                       </div>
                       <div className="min-w-0 flex-1 py-2.5 pr-3 border-b border-wa-border/40">
                         <div className="flex justify-between items-baseline gap-2">
-                          <span className="truncate text-[15px] text-wa-text">{name}</span>
+                          <span className="min-w-0 flex items-center gap-1.5">
+                            <span className="truncate text-[15px] text-wa-text">{name}</span>
+                            {stayStateOf(c) === 'arriving' && (
+                              <span className="shrink-0 px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 text-[10px] font-semibold whitespace-nowrap">
+                                Arriving {arriveLabel(c.check_in)}
+                              </span>
+                            )}
+                          </span>
                           <span className={`text-[11px] shrink-0 ${c.unread_count > 0 ? 'text-wa-green font-medium' : 'text-wa-muted'}`}>
                             {timeShort(c.last_message_at)}
                           </span>

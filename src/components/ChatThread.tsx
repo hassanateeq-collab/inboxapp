@@ -445,6 +445,12 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
               {conversation.property_label && <span>· {conversation.property_label}</span>}
               {conversation.booking_source && <span className="px-1.5 rounded bg-wa-panel">{sourceLabel(conversation.booking_source)}</span>}
               {conversation.booking_name && <span className="truncate">· {conversation.booking_name}</span>}
+              {conversation.checkin_status === 'PENDING' && (
+                <span className="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-semibold">Arriving — not checked in yet</span>
+              )}
+              {conversation.checkin_status === 'CHECKED_OUT' && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-semibold">Checked out</span>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2 text-xs text-wa-muted min-w-0">
