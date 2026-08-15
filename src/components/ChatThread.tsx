@@ -423,7 +423,8 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
   }
 
   const title = conversation.display_name || '+' + conversation.wa_phone
-  const linked = !!conversation.room_number
+  const linked = !!conversation.room_number || !!conversation.booking_id
+  const arriving = conversation.checkin_status === 'PENDING'
 
   return (
     <>
@@ -441,7 +442,11 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
           <div className="font-medium truncate">{title}</div>
           {linked ? (
             <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-wa-muted">
-              <span className="text-wa-text">Room {conversation.room_number}</span>
+              {arriving ? (
+                <span className="text-wa-text">#{conversation.beds24_booking_id || '\u2014'}{conversation.room_type ? ` \u00b7 ${conversation.room_type}` : ''}</span>
+              ) : (
+                <span className="text-wa-text">{conversation.room_number ? `Room ${conversation.room_number}` : `#${conversation.beds24_booking_id || '\u2014'}`}</span>
+              )}
               {conversation.property_label && <span>· {conversation.property_label}</span>}
               {conversation.booking_source && <span className="px-1.5 rounded bg-wa-panel">{sourceLabel(conversation.booking_source)}</span>}
               {conversation.booking_name && <span className="truncate">· {conversation.booking_name}</span>}

@@ -8,7 +8,7 @@ import ChatThread from './ChatThread'
 // Every column the UI actually renders from v_inbox_conversations (no select('*')).
 const CONV_COLS =
   'id, connection_id, wa_phone, display_name, last_message_at, last_message_preview, last_inbound_at, ' +
-  'unread_count, status, guest_id, booking_id, room_number, property_id, property_code, property_label, ' +
+  'unread_count, status, guest_id, booking_id, room_number, room_type, property_id, property_code, property_label, ' +
   'booking_source, booking_name, beds24_booking_id, checkin_status, check_in, check_out, tier, ' +
   'last_message_direction, last_message_status'
 

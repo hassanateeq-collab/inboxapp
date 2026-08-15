@@ -12,6 +12,7 @@ export interface Conversation {
   guest_id: string | null
   booking_id: string | null
   room_number: string | null
+  room_type: string | null
   property_id: string | null
   property_code: string | null
   property_label: string | null
@@ -52,6 +53,7 @@ export interface RosterEntry {
   booking_id: string
   beds24_booking_id: number | null
   room_number: string | null
+  room_type: string | null
   property_code: string | null
   booking_source: string | null
   check_in: string | null

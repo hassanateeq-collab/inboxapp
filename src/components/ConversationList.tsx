@@ -37,6 +37,7 @@ function timeShort(ts: string | null) {
 type Group = {
   key: string
   room_number: string | null
+  room_type: string | null
   property_label: string | null
   booking_source: string | null
   booking_name: string | null
@@ -109,7 +110,7 @@ export default function ConversationList({
       const key = stray ? '__stray__' : (c.booking_id || 'room:' + c.room_number)
       let g = m.get(key)
       if (!g) {
-        g = { key, room_number: c.room_number, property_label: c.property_label, booking_source: c.booking_source, booking_name: c.booking_name, isStray: stray, state: stayStateOf(c), beds24: c.beds24_booking_id, checkIn: c.check_in, checkOut: c.check_out, items: [], lastAt: 0 }
+        g = { key, room_number: c.room_number, room_type: c.room_type, property_label: c.property_label, booking_source: c.booking_source, booking_name: c.booking_name, isStray: stray, state: stayStateOf(c), beds24: c.beds24_booking_id, checkIn: c.check_in, checkOut: c.check_out, items: [], lastAt: 0 }
         m.set(key, g)
       }
       g.items.push(c)
@@ -162,7 +163,7 @@ export default function ConversationList({
       {/* Stay-state tabs with live unread badges — a message in any tab is visible from anywhere. */}
       <div className="flex gap-1.5 px-3 pb-2 overflow-x-auto bg-wa-panel shrink-0">
         <FilterPill active={stayFilter === 'inhouse'} onClick={() => onStayFilterChange('inhouse')} unread={unreadByState.inhouse}>In-house</FilterPill>
-        <FilterPill active={stayFilter === 'arriving'} onClick={() => onStayFilterChange('arriving')} unread={unreadByState.arriving}>Confirmed</FilterPill>
+        <FilterPill active={stayFilter === 'arriving'} onClick={() => onStayFilterChange('arriving')} unread={unreadByState.arriving}>Arriving</FilterPill>
         <FilterPill active={stayFilter === 'past'} onClick={() => onStayFilterChange('past')} unread={unreadByState.past}>Checked out</FilterPill>
         <FilterPill active={stayFilter === 'unknown'} onClick={() => onStayFilterChange('unknown')} unread={unreadByState.unknown}>Unknown</FilterPill>
         <FilterPill active={stayFilter === 'all'} onClick={() => onStayFilterChange('all')}>All</FilterPill>
@@ -199,6 +200,8 @@ export default function ConversationList({
                           someone else now, and repeat guests stay in different rooms. */}
                       {g.state === 'past' ? (
                         <span className="font-semibold">#{g.beds24 || '—'}</span>
+                      ) : g.state === 'arriving' ? (
+                        <span className="font-semibold text-wa-text/90">#{g.beds24 || '—'}{g.room_type ? ` · ${g.room_type}` : ''}</span>
                       ) : (
                         <span className="font-semibold text-wa-text/90">{g.room_number ? `Room ${g.room_number}` : `#${g.beds24 || '—'}`}</span>
                       )}
@@ -273,7 +276,7 @@ export default function ConversationList({
                 <div className="px-3 py-1.5 bg-wa-panel border-y border-wa-border/40 sticky top-0 z-10">
                   {stayFilter === 'arriving' ? (
                     <div className="text-[11px] uppercase tracking-wide text-sky-400/90 font-semibold">
-                      Confirmed — not yet arrived ({rosterGaps.length})
+                      Arriving — not yet checked in ({rosterGaps.length})
                     </div>
                   ) : (
                     <div className="text-[11px] uppercase tracking-wide text-red-400/90 font-semibold">
@@ -298,11 +301,15 @@ export default function ConversationList({
                       title="Open a chat and send an approved template to this guest"
                     >
                       <div className="w-11 h-11 rounded-full border border-dashed border-wa-border grid place-items-center text-wa-muted text-xs font-medium shrink-0">
-                        {(r.room_number || '?').slice(0, 4)}
+                        {r.stay_state === 'arriving' ? (fmtShortDate(r.check_in) || '?') : (r.room_number || '?').slice(0, 4)}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                          <span className="font-medium">Room {r.room_number || '—'}</span>
+                          {r.stay_state === 'arriving' ? (
+                            <span className="font-medium">#{r.beds24_booking_id || '—'}{r.room_type ? ` · ${r.room_type}` : ''}</span>
+                          ) : (
+                            <span className="font-medium">Room {r.room_number || '—'}</span>
+                          )}
                           <span className="text-[11px] text-wa-muted">· {r.property_code || '—'}</span>
                           {(r.check_in || r.check_out) && (
                             <span className="text-[11px] text-wa-muted tabular-nums">· {fmtStayRange(r.check_in, r.check_out)}</span>
