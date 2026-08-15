@@ -25,6 +25,8 @@ export interface Conversation {
   tier: number | null
   last_message_direction: 'inbound' | 'outbound' | null
   last_message_status: string | null
+  // guests.whatsapp_valid for this thread's number: false = Meta confirmed NOT on WhatsApp
+  wa_valid: boolean | null
 }
 
 export interface Message {
@@ -65,6 +67,8 @@ export interface RosterEntry {
   attached_invalid: number
   status: string
   stay_state: 'inhouse' | 'arriving'
+  // guests on this booking whose number Meta confirmed is NOT on WhatsApp
+  invalid_count: number
 }
 
 // Arrival-day filter for the Arriving tab: 'all' | 'today' | 'tomorrow' | 'YYYY-MM-DD'.

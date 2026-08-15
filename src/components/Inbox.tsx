@@ -10,7 +10,7 @@ const CONV_COLS =
   'id, connection_id, wa_phone, display_name, last_message_at, last_message_preview, last_inbound_at, ' +
   'unread_count, status, guest_id, booking_id, room_number, room_type, property_id, property_code, property_label, ' +
   'booking_source, booking_name, beds24_booking_id, checkin_status, check_in, check_out, tier, ' +
-  'last_message_direction, last_message_status'
+  'last_message_direction, last_message_status, wa_valid'
 
 // Long, loud three-tone alarm (~2.5s) — fired on new inbound and repeated every minute
 // while anything sits unread, so reception can't miss a message even with the app in the
@@ -292,7 +292,7 @@ export default function Inbox({ session }: { session: Session }) {
     let arriving = gaps.filter((r) => r.stay_state === 'arriving')
       .sort((a, b) => (a.check_in || '').localeCompare(b.check_in || '') || (a.property_code || '').localeCompare(b.property_code || ''))
     arriving = arriving.filter((r) => matchesArrivalDay(r.check_in, arrivalDay))
-    if (numberIssues) arriving = arriving.filter((r) => r.status !== 'reachable' || r.attached_invalid > 0)
+    if (numberIssues) arriving = arriving.filter((r) => r.invalid_count > 0)
     return { inhouse, arriving }
   }, [roster, conversations, propertyFilter, arrivalDay, numberIssues])
 
@@ -308,8 +308,8 @@ export default function Inbox({ session }: { session: Session }) {
     if (propertyFilter !== 'all') list = list.filter((c) => c.property_code === propertyFilter)
     if (stayFilter === 'arriving') {
       list = list.filter((c) => matchesArrivalDay(c.check_in, arrivalDay))
-      // "wrong number" on an existing thread = the last send failed to deliver
-      if (numberIssues) list = list.filter((c) => c.last_message_status === 'failed')
+      // verified by Meta as not on WhatsApp (guests.whatsapp_valid = false)
+      if (numberIssues) list = list.filter((c) => c.wa_valid === false)
     }
     return list
   }, [conversations, propertyFilter, stayFilter, arrivalDay, numberIssues])
