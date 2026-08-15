@@ -151,7 +151,7 @@ export default function ConversationList({
       {/* Stay-state tabs with live unread badges — a message in any tab is visible from anywhere. */}
       <div className="flex gap-1.5 px-3 pb-2 overflow-x-auto bg-wa-panel shrink-0">
         <FilterPill active={stayFilter === 'inhouse'} onClick={() => onStayFilterChange('inhouse')} unread={unreadByState.inhouse}>In-house</FilterPill>
-        <FilterPill active={stayFilter === 'arriving'} onClick={() => onStayFilterChange('arriving')} unread={unreadByState.arriving}>Arriving</FilterPill>
+        <FilterPill active={stayFilter === 'arriving'} onClick={() => onStayFilterChange('arriving')} unread={unreadByState.arriving}>Confirmed</FilterPill>
         <FilterPill active={stayFilter === 'past'} onClick={() => onStayFilterChange('past')} unread={unreadByState.past}>Checked out</FilterPill>
         <FilterPill active={stayFilter === 'unknown'} onClick={() => onStayFilterChange('unknown')} unread={unreadByState.unknown}>Unknown</FilterPill>
         <FilterPill active={stayFilter === 'all'} onClick={() => onStayFilterChange('all')}>All</FilterPill>
@@ -237,9 +237,15 @@ export default function ConversationList({
             {rosterGaps.length > 0 && !query && (
               <div>
                 <div className="px-3 py-1.5 bg-wa-panel border-y border-wa-border/40 sticky top-0 z-10">
-                  <div className="text-[11px] uppercase tracking-wide text-red-400/90 font-semibold">
-                    Not connected to WhatsApp ({rosterGaps.length})
-                  </div>
+                  {stayFilter === 'arriving' ? (
+                    <div className="text-[11px] uppercase tracking-wide text-sky-400/90 font-semibold">
+                      Confirmed — not yet arrived ({rosterGaps.length})
+                    </div>
+                  ) : (
+                    <div className="text-[11px] uppercase tracking-wide text-red-400/90 font-semibold">
+                      Not connected to WhatsApp ({rosterGaps.length})
+                    </div>
+                  )}
                 </div>
                 {gapError && (
                   <div className="mx-3 my-2 px-3 py-2 rounded-lg bg-red-900/40 border border-red-800/60 text-red-200 text-xs">

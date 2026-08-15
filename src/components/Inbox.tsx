@@ -278,12 +278,17 @@ export default function Inbox({ session }: { session: Session }) {
     }
   }, [fetchConversationRow])
 
-  // In-house bookings that have no conversation yet — the reachability gaps reception must fix.
+  // Bookings that have no conversation yet: in-house = reachability gaps reception must fix;
+  // arriving = confirmed guests who have not arrived (Confirmed tab, tap to open a chat).
   const rosterGaps = useMemo(() => {
     const withConv = new Set(conversations.map((c) => c.booking_id).filter(Boolean))
     let gaps = roster.filter((r) => !withConv.has(r.booking_id))
     if (propertyFilter !== 'all') gaps = gaps.filter((r) => r.property_code === propertyFilter)
-    return gaps.sort((a, b) => (a.property_code || '').localeCompare(b.property_code || '') || (a.room_number || '').localeCompare(b.room_number || ''))
+    const inhouse = gaps.filter((r) => r.stay_state !== 'arriving')
+      .sort((a, b) => (a.property_code || '').localeCompare(b.property_code || '') || (a.room_number || '').localeCompare(b.room_number || ''))
+    const arriving = gaps.filter((r) => r.stay_state === 'arriving')
+      .sort((a, b) => (a.check_in || '').localeCompare(b.check_in || '') || (a.property_code || '').localeCompare(b.property_code || ''))
+    return { inhouse, arriving }
   }, [roster, conversations, propertyFilter])
 
   // Per-tab unread counts power the pill badges — a message in any tab is visible from anywhere.
@@ -324,7 +329,7 @@ export default function Inbox({ session }: { session: Session }) {
 
   return (
     <div className="h-full flex bg-wa-dark text-wa-text overflow-hidden">
-      <div className={`${selected ? 'hidden md:flex' : 'flex'} w-full md:w-[34%] md:min-w-[330px] md:max-w-[460px] flex-col border-r border-wa-border`}>
+      <div className={`${selected ? 'hidden md:flex' : 'flex'} w-full md:w-[42%] md:min-w-[380px] md:max-w-[580px] flex-col border-r border-wa-border`}>
         <ConversationList
           conversations={filtered}
           loading={!loaded}
@@ -338,7 +343,7 @@ export default function Inbox({ session }: { session: Session }) {
           stayFilter={stayFilter}
           onStayFilterChange={setStayFilter}
           unreadByState={unreadByState}
-          rosterGaps={stayFilter === 'inhouse' ? rosterGaps : []}
+          rosterGaps={stayFilter === 'inhouse' ? rosterGaps.inhouse : stayFilter === 'arriving' ? rosterGaps.arriving : []}
           onStartChat={startChat}
           gapBusyId={gapBusy}
           gapError={gapError}

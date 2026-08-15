@@ -62,6 +62,7 @@ export interface RosterEntry {
   with_number_count: number
   attached_invalid: number
   status: string
+  stay_state: 'inhouse' | 'arriving'
 }
 
 // Meta's 24h customer-service window, derived client-side from last_inbound_at so it stays
