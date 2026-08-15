@@ -107,6 +107,10 @@ export type StayState = 'inhouse' | 'arriving' | 'past' | 'unknown'
 export function stayStateOf(c: Conversation): StayState {
   if (!c.booking_id) return 'unknown'
   if (c.checkin_status === 'CHECKED_OUT') return 'past'
-  if (c.checkin_status === 'PENDING') return 'arriving'
+  if (c.checkin_status === 'PENDING') {
+    // a PENDING booking whose stay window has passed is a no-show, not an arrival
+    if (c.check_out && new Date(c.check_out + 'T23:59:59') < new Date()) return 'past'
+    return 'arriving'
+  }
   return 'inhouse'
 }
