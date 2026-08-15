@@ -149,9 +149,11 @@ export default function Inbox({ session }: { session: Session }) {
           existing.guest_id !== row.guest_id ||
           existing.room_number !== row.room_number ||
           existing.property_id !== row.property_id
+        // A "touch" (updated_at bumped, no new message) is the checkout/check-in signal from
+        // trg_conversation_checkin_status_touch — the roster state lives in the view, refetch.
+        const touchOnly = existing.last_message_at === row.last_message_at
         mergeConversation(row)
-        // Joined labels (property/booking) live in the view; refetch this row only when linkage moved.
-        if (linkageChanged) fetchConversationRow(row.id)
+        if (linkageChanged || touchOnly) fetchConversationRow(row.id)
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guest_messages' }, (payload) => {
         const m: any = payload.new
