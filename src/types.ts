@@ -67,6 +67,16 @@ export interface RosterEntry {
   stay_state: 'inhouse' | 'arriving'
 }
 
+// Arrival-day filter for the Arriving tab: 'all' | 'today' | 'tomorrow' | 'YYYY-MM-DD'.
+export function matchesArrivalDay(checkIn: string | null, sel: string): boolean {
+  if (sel === 'all') return true
+  if (!checkIn) return false
+  if (/^\d{4}-\d{2}-\d{2}$/.test(sel)) return checkIn === sel
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const diff = Math.round((new Date(checkIn + 'T00:00:00').getTime() - today.getTime()) / 86400000)
+  return sel === 'today' ? diff === 0 : sel === 'tomorrow' ? diff === 1 : true
+}
+
 // Meta's 24h customer-service window, derived client-side from last_inbound_at so it stays
 // fresh with realtime updates (the DB view exposes the same via window_open/window_expires_at).
 // Open = free-form replies allowed; closed = text auto-delivers as the approved template,

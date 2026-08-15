@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { stayStateOf, type Conversation, type InboxIdentity, type RosterEntry, type StayState } from '../types'
+import { matchesArrivalDay, stayStateOf, type Conversation, type InboxIdentity, type RosterEntry, type StayState } from '../types'
 import ConversationList from './ConversationList'
 import ChatThread from './ChatThread'
 
@@ -55,6 +55,9 @@ export default function Inbox({ session }: { session: Session }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [propertyFilter, setPropertyFilter] = useState<string>('all')
   const [stayFilter, setStayFilter] = useState<StayState | 'all'>('inhouse')
+  // Arriving-tab refinements: arrival day ('all'|'today'|'tomorrow'|ISO date) + number problems.
+  const [arrivalDay, setArrivalDay] = useState<string>('all')
+  const [numberIssues, setNumberIssues] = useState(false)
   const [identity, setIdentity] = useState<InboxIdentity | null>(null)
   const selectedIdRef = useRef<string | null>(null)
   selectedIdRef.current = selectedId
@@ -286,10 +289,12 @@ export default function Inbox({ session }: { session: Session }) {
     if (propertyFilter !== 'all') gaps = gaps.filter((r) => r.property_code === propertyFilter)
     const inhouse = gaps.filter((r) => r.stay_state !== 'arriving')
       .sort((a, b) => (a.property_code || '').localeCompare(b.property_code || '') || (a.room_number || '').localeCompare(b.room_number || ''))
-    const arriving = gaps.filter((r) => r.stay_state === 'arriving')
+    let arriving = gaps.filter((r) => r.stay_state === 'arriving')
       .sort((a, b) => (a.check_in || '').localeCompare(b.check_in || '') || (a.property_code || '').localeCompare(b.property_code || ''))
+    arriving = arriving.filter((r) => matchesArrivalDay(r.check_in, arrivalDay))
+    if (numberIssues) arriving = arriving.filter((r) => r.status !== 'reachable' || r.attached_invalid > 0)
     return { inhouse, arriving }
-  }, [roster, conversations, propertyFilter])
+  }, [roster, conversations, propertyFilter, arrivalDay, numberIssues])
 
   // Per-tab unread counts power the pill badges — a message in any tab is visible from anywhere.
   const unreadByState = useMemo(() => {
@@ -301,8 +306,13 @@ export default function Inbox({ session }: { session: Session }) {
   const filtered = useMemo(() => {
     let list = stayFilter === 'all' ? conversations : conversations.filter((c) => stayStateOf(c) === stayFilter)
     if (propertyFilter !== 'all') list = list.filter((c) => c.property_code === propertyFilter)
+    if (stayFilter === 'arriving') {
+      list = list.filter((c) => matchesArrivalDay(c.check_in, arrivalDay))
+      // "wrong number" on an existing thread = the last send failed to deliver
+      if (numberIssues) list = list.filter((c) => c.last_message_status === 'failed')
+    }
     return list
-  }, [conversations, propertyFilter, stayFilter])
+  }, [conversations, propertyFilter, stayFilter, arrivalDay, numberIssues])
 
   const selected = conversations.find((c) => c.id === selectedId) || null
 
@@ -343,6 +353,10 @@ export default function Inbox({ session }: { session: Session }) {
           stayFilter={stayFilter}
           onStayFilterChange={setStayFilter}
           unreadByState={unreadByState}
+          arrivalDay={arrivalDay}
+          onArrivalDayChange={setArrivalDay}
+          numberIssues={numberIssues}
+          onNumberIssuesChange={setNumberIssues}
           rosterGaps={stayFilter === 'inhouse' ? rosterGaps.inhouse : stayFilter === 'arriving' ? rosterGaps.arriving : []}
           onStartChat={startChat}
           gapBusyId={gapBusy}

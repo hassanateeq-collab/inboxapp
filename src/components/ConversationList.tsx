@@ -70,6 +70,7 @@ export default function ConversationList({
   conversations, loading, selectedId, onSelect, userEmail, onLogout,
   propertyOptions, propertyFilter, onFilterChange,
   stayFilter, onStayFilterChange, unreadByState, rosterGaps,
+  arrivalDay, onArrivalDayChange, numberIssues, onNumberIssuesChange,
   onStartChat, gapBusyId, gapError,
 }: {
   conversations: Conversation[]
@@ -84,6 +85,10 @@ export default function ConversationList({
   stayFilter: StayState | 'all'
   onStayFilterChange: (v: StayState | 'all') => void
   unreadByState: Record<StayState, number>
+  arrivalDay: string
+  onArrivalDayChange: (v: string) => void
+  numberIssues: boolean
+  onNumberIssuesChange: (v: boolean) => void
   rosterGaps: RosterEntry[]
   onStartChat: (r: RosterEntry) => void
   gapBusyId: string | null
@@ -168,6 +173,29 @@ export default function ConversationList({
         <FilterPill active={stayFilter === 'unknown'} onClick={() => onStayFilterChange('unknown')} unread={unreadByState.unknown}>Unknown</FilterPill>
         <FilterPill active={stayFilter === 'all'} onClick={() => onStayFilterChange('all')}>All</FilterPill>
       </div>
+
+      {stayFilter === 'arriving' && (
+        <div className="flex gap-1.5 px-3 pb-2 overflow-x-auto bg-wa-panel shrink-0 items-center">
+          <FilterPill active={arrivalDay === 'all'} onClick={() => onArrivalDayChange('all')}>All dates</FilterPill>
+          <FilterPill active={arrivalDay === 'today'} onClick={() => onArrivalDayChange('today')}>Today</FilterPill>
+          <FilterPill active={arrivalDay === 'tomorrow'} onClick={() => onArrivalDayChange('tomorrow')}>Tomorrow</FilterPill>
+          <input
+            type="date"
+            value={/^\d{4}-\d{2}-\d{2}$/.test(arrivalDay) ? arrivalDay : ''}
+            onChange={(e) => onArrivalDayChange(e.target.value || 'all')}
+            style={{ colorScheme: 'dark' }}
+            className={`px-2.5 py-0.5 rounded-full text-xs shrink-0 outline-none border bg-transparent ${/^\d{4}-\d{2}-\d{2}$/.test(arrivalDay) ? 'text-wa-green border-wa-green/60 bg-wa-green/10' : 'text-wa-muted border-wa-border/80'}`}
+            title="Show guests arriving on an exact date"
+          />
+          <button
+            onClick={() => onNumberIssuesChange(!numberIssues)}
+            className={`px-3 py-1 rounded-full text-xs whitespace-nowrap shrink-0 transition-colors border ${numberIssues ? 'bg-red-500/15 text-red-300 border-transparent font-medium' : 'bg-transparent text-wa-muted border-wa-border/80 hover:bg-wa-header'}`}
+            title="Only guests whose WhatsApp number is missing, invalid, or failing to deliver"
+          >
+            Number issues
+          </button>
+        </div>
+      )}
 
       {stayFilter !== 'arriving' && unreadByState.arriving > 0 && (
         <button
