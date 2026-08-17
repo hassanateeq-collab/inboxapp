@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { matchesArrivalDay, stayStateOf, type Conversation, type InboxIdentity, type RosterEntry, type StayState } from '../types'
+import { matchesArrivalDay, stayStateOf, type Conversation, type InboxIdentity, type RosterEntry, type SortBy, type StayState } from '../types'
 import ConversationList from './ConversationList'
 import ChatThread from './ChatThread'
 
@@ -10,7 +10,7 @@ const CONV_COLS =
   'id, connection_id, wa_phone, display_name, last_message_at, last_message_preview, last_inbound_at, ' +
   'unread_count, status, guest_id, booking_id, room_number, room_type, property_id, property_code, property_label, ' +
   'booking_source, booking_name, beds24_booking_id, checkin_status, check_in, check_out, tier, ' +
-  'last_message_direction, last_message_status, wa_valid'
+  'last_message_direction, last_message_status, wa_valid, booked_at'
 
 // Long, loud three-tone alarm (~2.5s) — fired on new inbound and repeated every minute
 // while anything sits unread, so reception can't miss a message even with the app in the
@@ -58,6 +58,8 @@ export default function Inbox({ session }: { session: Session }) {
   // Arriving-tab refinements: arrival day ('all'|'today'|'tomorrow'|ISO date) + number problems.
   const [arrivalDay, setArrivalDay] = useState<string>('all')
   const [numberIssues, setNumberIssues] = useState(false)
+  // null = automatic per-tab default: Arriving sorts by newest booking, other tabs unreplied-first.
+  const [sortPick, setSortPick] = useState<SortBy | null>(null)
   const [identity, setIdentity] = useState<InboxIdentity | null>(null)
   const selectedIdRef = useRef<string | null>(null)
   selectedIdRef.current = selectedId
@@ -300,11 +302,14 @@ export default function Inbox({ session }: { session: Session }) {
     const inhouse = gaps.filter((r) => r.stay_state !== 'arriving')
       .sort((a, b) => (a.property_code || '').localeCompare(b.property_code || '') || (a.room_number || '').localeCompare(b.room_number || ''))
     let arriving = gaps.filter((r) => r.stay_state === 'arriving')
-      .sort((a, b) => (a.check_in || '').localeCompare(b.check_in || '') || (a.property_code || '').localeCompare(b.property_code || ''))
+      .sort((a, b) =>
+        (sortPick ?? 'booked') === 'booked'
+          ? (b.booked_at || '').localeCompare(a.booked_at || '')
+          : (a.check_in || '').localeCompare(b.check_in || '') || (a.property_code || '').localeCompare(b.property_code || ''))
     arriving = arriving.filter((r) => matchesArrivalDay(r.check_in, arrivalDay))
     if (numberIssues) arriving = arriving.filter((r) => r.invalid_count > 0)
     return { inhouse, arriving }
-  }, [roster, conversations, propertyFilter, arrivalDay, numberIssues])
+  }, [roster, conversations, propertyFilter, arrivalDay, numberIssues, sortPick])
 
   // Per-tab unread counts power the pill badges — a message in any tab is visible from anywhere.
   const unreadByState = useMemo(() => {
@@ -323,6 +328,8 @@ export default function Inbox({ session }: { session: Session }) {
     }
     return list
   }, [conversations, propertyFilter, stayFilter, arrivalDay, numberIssues])
+
+  const sortBy: SortBy = sortPick ?? (stayFilter === 'arriving' ? 'booked' : 'unreplied')
 
   const selected = conversations.find((c) => c.id === selectedId) || null
 
@@ -363,6 +370,8 @@ export default function Inbox({ session }: { session: Session }) {
           stayFilter={stayFilter}
           onStayFilterChange={setStayFilter}
           unreadByState={unreadByState}
+          sortBy={sortBy}
+          onSortChange={setSortPick}
           arrivalDay={arrivalDay}
           onArrivalDayChange={setArrivalDay}
           numberIssues={numberIssues}

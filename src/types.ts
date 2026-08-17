@@ -27,7 +27,13 @@ export interface Conversation {
   last_message_status: string | null
   // guests.whatsapp_valid for this thread's number: false = Meta confirmed NOT on WhatsApp
   wa_valid: boolean | null
+  // when the booking was CREATED (bookings.created_at) — drives the "Newest bookings" sort
+  booked_at: string | null
 }
+
+// Conversation-list sort orders. The default is per-tab: Arriving -> 'booked'
+// (newest bookings first), everything else -> 'unreplied'.
+export type SortBy = 'unreplied' | 'recent' | 'arrival' | 'booked'
 
 export interface Message {
   id: string
@@ -69,6 +75,7 @@ export interface RosterEntry {
   stay_state: 'inhouse' | 'arriving'
   // guests on this booking whose number Meta confirmed is NOT on WhatsApp
   invalid_count: number
+  booked_at: string | null
 }
 
 // Arrival-day filter for the Arriving tab: 'all' | 'today' | 'tomorrow' | 'YYYY-MM-DD'.

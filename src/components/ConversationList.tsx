@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { stayStateOf, windowInfo, type Conversation, type RosterEntry, type StayState } from '../types'
+import { stayStateOf, windowInfo, type Conversation, type RosterEntry, type SortBy, type StayState } from '../types'
 import { sourceLabel, digits, avatarColor } from '../lib/labels'
 import { Ticks } from './Ticks'
 
@@ -34,11 +34,10 @@ function timeShort(ts: string | null) {
     : d.toLocaleDateString([], { day: '2-digit', month: 'short' })
 }
 
-type SortBy = 'unreplied' | 'recent' | 'arrival'
-
 type Group = {
   key: string
   unreplied: boolean
+  bookedAt: string | null
   room_number: string | null
   room_type: string | null
   property_label: string | null
@@ -73,6 +72,7 @@ export default function ConversationList({
   conversations, loading, selectedId, onSelect, userEmail, onLogout,
   propertyOptions, propertyFilter, onFilterChange,
   stayFilter, onStayFilterChange, unreadByState, rosterGaps,
+  sortBy, onSortChange,
   arrivalDay, onArrivalDayChange, numberIssues, onNumberIssuesChange,
   onStartChat, gapBusyId, gapError,
 }: {
@@ -88,6 +88,8 @@ export default function ConversationList({
   stayFilter: StayState | 'all'
   onStayFilterChange: (v: StayState | 'all') => void
   unreadByState: Record<StayState, number>
+  sortBy: SortBy
+  onSortChange: (v: SortBy) => void
   arrivalDay: string
   onArrivalDayChange: (v: string) => void
   numberIssues: boolean
@@ -98,7 +100,6 @@ export default function ConversationList({
   gapError: string | null
 }) {
   const [query, setQuery] = useState('')
-  const [sortBy, setSortBy] = useState<SortBy>('unreplied')
 
   const searched = useMemo(() => {
     const s = query.trim().toLowerCase()
@@ -119,7 +120,7 @@ export default function ConversationList({
       const key = stray ? '__stray__' : (c.booking_id || 'room:' + c.room_number)
       let g = m.get(key)
       if (!g) {
-        g = { key, unreplied: false, room_number: c.room_number, room_type: c.room_type, property_label: c.property_label, booking_source: c.booking_source, booking_name: c.booking_name, isStray: stray, state: stayStateOf(c), beds24: c.beds24_booking_id, checkIn: c.check_in, checkOut: c.check_out, items: [], lastAt: 0 }
+        g = { key, unreplied: false, bookedAt: c.booked_at, room_number: c.room_number, room_type: c.room_type, property_label: c.property_label, booking_source: c.booking_source, booking_name: c.booking_name, isStray: stray, state: stayStateOf(c), beds24: c.beds24_booking_id, checkIn: c.check_in, checkOut: c.check_out, items: [], lastAt: 0 }
         m.set(key, g)
       }
       g.items.push(c)
@@ -132,6 +133,10 @@ export default function ConversationList({
       if (a.isStray !== b.isStray) return a.isStray ? 1 : -1
       // default: guests still waiting for a reply always come first
       if (sortBy === 'unreplied' && a.unreplied !== b.unreplied) return a.unreplied ? -1 : 1
+      if (sortBy === 'booked') {
+        const ab = a.bookedAt || ''; const bb = b.bookedAt || ''
+        if (ab !== bb) return ab > bb ? -1 : 1 // newest booking first; no booking sinks
+      }
       if (sortBy === 'arrival') {
         const ai = a.checkIn || '9999-99-99'; const bi = b.checkIn || '9999-99-99'
         if (ai !== bi) return ai < bi ? -1 : 1
@@ -188,11 +193,12 @@ export default function ConversationList({
         <FilterPill active={stayFilter === 'all'} onClick={() => onStayFilterChange('all')}>All</FilterPill>
         <select
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortBy)}
+          onChange={(e) => onSortChange(e.target.value as SortBy)}
           style={{ colorScheme: 'dark' }}
           className="ml-auto bg-transparent text-wa-muted text-xs border border-wa-border/80 rounded-full px-2 py-0.5 outline-none shrink-0"
           title="Sort conversations"
         >
+          <option value="booked">Newest bookings</option>
           <option value="unreplied">Not replied first</option>
           <option value="recent">Latest first</option>
           <option value="arrival">Arrival date</option>
