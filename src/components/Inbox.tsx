@@ -212,11 +212,21 @@ export default function Inbox({ session }: { session: Session }) {
 
   const totalUnread = useMemo(() => conversations.reduce((s, c) => s + (c.unread_count || 0), 0), [conversations])
 
-  // Repeat-until-opened alarm: while anything is unread, re-sound every 60s and flash the
-  // tab title, so a missed first alert can't stay missed. Stops the moment the thread opens.
+  // Only unread with a RECENT inbound (24h — the reply window) drives the repeating alarm.
+  // Older unread keeps its badge but stops re-ringing forever (stale chats were making the
+  // alarm sound with "no new messages").
+  const alarmUnread = useMemo(() => conversations.reduce((s, c) => {
+    if (!c.unread_count) return s
+    const t = c.last_inbound_at ? Date.parse(c.last_inbound_at) : 0
+    return Date.now() - t < 24 * 3600 * 1000 ? s + c.unread_count : s
+  }, 0), [conversations])
+
+  // Repeat-until-opened alarm: while anything actionable is unread, re-sound every 60s and
+  // flash the tab title, so a missed first alert can't stay missed. Stops when opened.
   useEffect(() => {
     if (totalUnread === 0) { document.title = 'Hamsun Inbox'; return }
     document.title = `(${totalUnread}) Hamsun Inbox`
+    if (alarmUnread === 0) return // stale unread only: keep the badge, no flash or re-ring
     let flip = false
     const flash = setInterval(() => {
       flip = !flip
@@ -226,7 +236,7 @@ export default function Inbox({ session }: { session: Session }) {
       playAlarm()
       try {
         if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-          const n = new Notification(`${totalUnread} unread WhatsApp message${totalUnread > 1 ? 's' : ''}`, {
+          const n = new Notification(`${alarmUnread} unread WhatsApp message${alarmUnread > 1 ? 's' : ''}`, {
             body: 'Guests are waiting for a reply — open the Hamsun Inbox.',
             tag: 'hamsun-inbox', requireInteraction: true, renotify: true,
           } as NotificationOptions)
@@ -235,7 +245,7 @@ export default function Inbox({ session }: { session: Session }) {
       } catch { /* ignore */ }
     }, 60_000)
     return () => { clearInterval(flash); clearInterval(rering); document.title = 'Hamsun Inbox' }
-  }, [totalUnread])
+  }, [totalUnread, alarmUnread])
 
   const propertyOptions = useMemo(() => {
     const map = new Map<string, string>()
