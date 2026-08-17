@@ -28,6 +28,34 @@ function dayLabel(ts: string): string {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+// Outbound interactive/template sends log their buttons as a trailing "[Label] [Label]".
+// Render them as WhatsApp-style button rows instead of raw brackets.
+function splitButtons(body: string): { text: string; buttons: string[] } {
+  const m = body.match(/\s+((?:\[[^\[\]\n]{1,40}\]\s*){1,3})$/)
+  if (!m || m.index === undefined || m.index === 0) return { text: body, buttons: [] }
+  const labels = [...m[1].matchAll(/\[([^\[\]\n]{1,40})\]/g)].map((x) => x[1])
+  if (labels.length === 0) return { text: body, buttons: [] }
+  return { text: body.slice(0, m.index).trimEnd(), buttons: labels }
+}
+
+const URL_RE = /(https?:\/\/[^\s]+)/g
+
+// Plain-text bodies with tappable links, exactly like WhatsApp shows them.
+function Linkify({ text }: { text: string }) {
+  const parts = text.split(URL_RE)
+  return (
+    <>
+      {parts.map((p, i) =>
+        /^https?:\/\//.test(p) ? (
+          <a key={i} href={p} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline underline-offset-2 break-all">{p}</a>
+        ) : (
+          <span key={i}>{p}</span>
+        ),
+      )}
+    </>
+  )
+}
+
 function docFileName(url: string, body: string | null): string {
   try {
     const seg = decodeURIComponent(url.split('?')[0].split('#')[0].split('/').pop() || '')
@@ -88,6 +116,8 @@ function Bubble({ m, tail, onRetry, onReact, canReact }: {
   const out = m.direction === 'outbound'
   const hasMedia = !!m.media_url && ['image', 'sticker', 'audio', 'voice', 'ptt', 'document'].includes(m.msg_type)
   const showBodyText = !!m.body && !(m.msg_type === 'document' && hasMedia)
+  // Only outbound bodies carry the trailing button convention; guest text is shown verbatim.
+  const parsed = out && m.body ? splitButtons(m.body) : { text: m.body || '', buttons: [] }
   const reactions = m.reactions && Object.keys(m.reactions).length > 0 ? m.reactions : null
   const [pick, setPick] = useState(false)
   const showReactBtn = !out && canReact && !!m.wa_message_id
@@ -95,7 +125,7 @@ function Bubble({ m, tail, onRetry, onReact, canReact }: {
     <div className={`group flex items-center ${out ? 'justify-end' : 'justify-start'} px-2 ${reactions ? 'mb-3' : ''}`}>
       <div className={`relative max-w-[82%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm ${out ? 'bg-wa-bubbleOut' : 'bg-wa-bubbleIn'} ${tail ? (out ? 'msg-tail-out' : 'msg-tail-in') : ''}`}>
         {hasMedia && <MediaBlock m={m} />}
-        {showBodyText && <span className="whitespace-pre-wrap break-words">{m.body}</span>}
+        {showBodyText && <span className="whitespace-pre-wrap break-words"><Linkify text={parsed.text} /></span>}
         {!hasMedia && !showBodyText && (
           <span className="text-wa-muted px-1.5 py-0.5 rounded bg-black/20 text-xs">[{m.msg_type}]</span>
         )}
@@ -107,6 +137,15 @@ function Bubble({ m, tail, onRetry, onReact, canReact }: {
           <div className="clear-both pt-1 text-[11px] text-red-300 flex items-center gap-2">
             <span>Not sent</span>
             <button onClick={() => onRetry(m.id)} className="underline underline-offset-2 hover:text-red-200">Retry</button>
+          </div>
+        )}
+        {parsed.buttons.length > 0 && (
+          <div className="clear-both mt-2 -mx-2.5 -mb-1.5 border-t border-black/25" title="Buttons the guest can tap in WhatsApp">
+            {parsed.buttons.map((b) => (
+              <div key={b} className="text-center text-sky-300 text-[13px] font-medium py-1.5 border-b border-black/25 last:border-b-0 select-none">
+                {b}
+              </div>
+            ))}
           </div>
         )}
         {/* WhatsApp-style reaction chip(s) overlapping the bubble's bottom edge */}
