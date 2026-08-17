@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { matchesArrivalDay, stayStateOf, type Conversation, type InboxIdentity, type RosterEntry, type SortBy, type StayState } from '../types'
 import ConversationList from './ConversationList'
 import ChatThread from './ChatThread'
+import { enablePush, getPushState, syncPush, type PushState } from '../lib/push'
 
 // Every column the UI actually renders from v_inbox_conversations (no select('*')).
 const CONV_COLS =
@@ -61,6 +62,29 @@ export default function Inbox({ session }: { session: Session }) {
   // null = automatic per-tab default: Arriving sorts by newest booking, other tabs unreplied-first.
   const [sortPick, setSortPick] = useState<SortBy | null>(null)
   const [identity, setIdentity] = useState<InboxIdentity | null>(null)
+  // Web Push onboarding: banner shows until this device is subscribed (or dismissed).
+  const [pushState, setPushState] = useState<PushState | null>(null)
+  const [pushBannerDismissed, setPushBannerDismissed] = useState(
+    () => sessionStorage.getItem('push_banner_dismissed') === '1',
+  )
+  const [pushBusy, setPushBusy] = useState(false)
+
+  useEffect(() => {
+    getPushState().then(setPushState)
+    syncPush(session.user.id, session.user.email || '')
+  }, [session.user.id, session.user.email])
+
+  const handleEnablePush = useCallback(async () => {
+    setPushBusy(true)
+    const res = await enablePush(session.user.id, session.user.email || '')
+    setPushBusy(false)
+    setPushState(res.state)
+  }, [session.user.id, session.user.email])
+
+  const dismissPushBanner = useCallback(() => {
+    sessionStorage.setItem('push_banner_dismissed', '1')
+    setPushBannerDismissed(true)
+  }, [])
   const selectedIdRef = useRef<string | null>(null)
   selectedIdRef.current = selectedId
   const conversationsRef = useRef<Conversation[]>([])
@@ -355,7 +379,35 @@ export default function Inbox({ session }: { session: Session }) {
   }, [])
 
   return (
-    <div className="h-full flex bg-wa-dark text-wa-text overflow-hidden">
+    <div className="h-full flex flex-col bg-wa-dark text-wa-text overflow-hidden">
+      {!pushBannerDismissed && pushState === 'unsubscribed' && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-wa-header border-b border-wa-border text-[13px]">
+          <span className="flex-1 leading-snug">
+            Get notified on this phone when guests message — even with the app closed.
+          </span>
+          <button
+            onClick={handleEnablePush}
+            disabled={pushBusy}
+            className="shrink-0 px-3 py-1.5 rounded-full bg-wa-green text-black text-xs font-semibold disabled:opacity-50"
+          >
+            {pushBusy ? 'Enabling…' : 'Enable notifications'}
+          </button>
+          <button onClick={dismissPushBanner} className="shrink-0 text-wa-text/60 px-1" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
+      {!pushBannerDismissed && pushState === 'denied' && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-wa-header border-b border-wa-border text-[12px] text-wa-text/70">
+          <span className="flex-1 leading-snug">
+            Notifications are blocked for this app — allow them in your browser/site settings to get message alerts.
+          </span>
+          <button onClick={dismissPushBanner} className="shrink-0 text-wa-text/60 px-1" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
+      <div className="flex-1 flex overflow-hidden min-h-0">
       <div className={`${selected ? 'hidden md:flex' : 'flex'} w-full md:w-[42%] md:min-w-[380px] md:max-w-[580px] flex-col border-r border-wa-border`}>
         <ConversationList
           conversations={filtered}
@@ -388,6 +440,7 @@ export default function Inbox({ session }: { session: Session }) {
         ) : (
           <EmptyState />
         )}
+      </div>
       </div>
     </div>
   )
