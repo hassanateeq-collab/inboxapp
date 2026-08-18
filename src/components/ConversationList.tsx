@@ -326,9 +326,16 @@ export default function ConversationList({
                             <span className="truncate">{c.last_message_preview || (g.isStray ? '+' + c.wa_phone : '')}</span>
                           </span>
                           {c.unread_count > 0 ? (
-                            <span className="bg-wa-green text-black text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 grid place-items-center shrink-0">{c.unread_count}</span>
+                            <span className="flex flex-col items-end gap-0.5 shrink-0">
+                              <span className="bg-wa-green text-black text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 grid place-items-center">{c.unread_count}</span>
+                              {/* Someone looked after the newest inbound but nobody replied yet */}
+                              {c.last_read_by && c.last_read_at && c.last_inbound_at &&
+                                Date.parse(c.last_read_at) >= Date.parse(c.last_inbound_at) && (
+                                  <span className="text-[10px] text-wa-muted whitespace-nowrap">seen · {c.last_read_by}</span>
+                                )}
+                            </span>
                           ) : c.last_read_by && c.last_message_direction === 'inbound' ? (
-                            // Shared read state: show who picked this message up.
+                            // Handled without a reply ("Mark handled"): show who took it.
                             <span className="text-[10px] text-wa-muted shrink-0 whitespace-nowrap">seen · {c.last_read_by}</span>
                           ) : null}
                         </div>

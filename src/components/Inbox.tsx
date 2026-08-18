@@ -100,10 +100,9 @@ export default function Inbox({ session }: { session: Session }) {
       .from('v_inbox_conversations')
       .select(CONV_COLS)
       .order('last_message_at', { ascending: false, nullsFirst: false })
-    const rows = ((data as unknown as Conversation[]) || []).map((c) =>
-      c.id === selectedIdRef.current && c.unread_count ? { ...c, unread_count: 0 } : c,
-    )
-    setConversations(rows)
+    // Reply-based ownership: unread persists even for the open thread — only a
+    // staff reply (trg_reply_clears_unread) or "Mark handled" clears it.
+    setConversations((data as unknown as Conversation[]) || [])
     setLoaded(true)
   }, [])
 
@@ -116,11 +115,9 @@ export default function Inbox({ session }: { session: Session }) {
         // Only insert full rows (i.e. rows fetched from the view); partial patches wait for the fetch.
         if (typeof row.wa_phone !== 'string') return prev
         const full = { unread_count: 0, ...row } as Conversation
-        if (full.id === selectedIdRef.current) full.unread_count = 0
         return sortByLastMessage([...prev, full])
       }
       const merged = { ...prev[idx], ...row }
-      if (merged.id === selectedIdRef.current) merged.unread_count = 0
       let changed = false
       for (const k of Object.keys(merged) as (keyof Conversation)[]) {
         if (prev[idx][k] !== merged[k]) { changed = true; break }
@@ -215,9 +212,10 @@ export default function Inbox({ session }: { session: Session }) {
           notify('New WhatsApp message', m?.body ? String(m.body).slice(0, 120) : 'New message')
         }
         if (m?.direction === 'inbound' && isSelected) {
-          // The thread is open, so keep the DB read-state at 0 (echo merges the same value: no flicker).
+          // Thread is open: stamp "seen" but leave unread alone — under the
+          // reply-based model the badge stays until someone actually answers.
           void supabase.from('guest_conversations')
-            .update({ unread_count: 0, last_read_by: readerNameRef.current, last_read_at: new Date().toISOString() })
+            .update({ last_read_by: readerNameRef.current, last_read_at: new Date().toISOString() })
             .eq('id', convId)
         }
       })
@@ -249,9 +247,12 @@ export default function Inbox({ session }: { session: Session }) {
   // alarm sound with "no new messages").
   const alarmUnread = useMemo(() => conversations.reduce((s, c) => {
     if (!c.unread_count) return s
+    // The thread open on THIS device doesn't ring here (you're handling it);
+    // it still counts — and rings — on every other device until a reply lands.
+    if (c.id === selectedId) return s
     const t = c.last_inbound_at ? Date.parse(c.last_inbound_at) : 0
     return Date.now() - t < 24 * 3600 * 1000 ? s + c.unread_count : s
-  }, 0), [conversations])
+  }, 0), [conversations, selectedId])
 
   // Repeat-until-opened alarm: while anything actionable is unread, re-sound every 60s and
   // flash the tab title, so a missed first alert can't stay missed. Stops when opened.
@@ -396,17 +397,15 @@ export default function Inbox({ session }: { session: Session }) {
   function openConversation(id: string) {
     selectedIdRef.current = id
     setSelectedId(id)
-    // Optimistic: clear the badge locally right away; the DB echo re-merges the same value.
+    // Reply-based ownership: opening does NOT clear the badge — only a staff
+    // reply does (trg_reply_clears_unread). Opening just stamps who looked
+    // ("seen by ali"), so the team sees it's picked up but still unanswered.
     const hadUnread = (conversationsRef.current.find((c) => c.id === id)?.unread_count || 0) > 0
-    setConversations((prev) => prev.map((c) => (c.id === id && c.unread_count ? { ...c, unread_count: 0 } : c)))
-    // Read state is shared by design — stamp WHO cleared it so the team can see
-    // who picked the message up ("Seen by ali").
-    const patch: Record<string, unknown> = { unread_count: 0 }
     if (hadUnread) {
-      patch.last_read_by = readerName
-      patch.last_read_at = new Date().toISOString()
+      void supabase.from('guest_conversations')
+        .update({ last_read_by: readerName, last_read_at: new Date().toISOString() })
+        .eq('id', id)
     }
-    void supabase.from('guest_conversations').update(patch).eq('id', id)
   }
 
   // Escape deselects the open thread on the mobile layout (modal Escape handlers stop propagation first).

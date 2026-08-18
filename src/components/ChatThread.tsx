@@ -257,6 +257,16 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
     }
   }, [conversation.id])
 
+  // Reply-based ownership: whoever answers first wins the conversation. The DB
+  // trigger (trg_reply_clears_unread) clears the badge on any staff message;
+  // this stamps the precise replier name for the "seen · ali" labels.
+  const stampReplied = useCallback(() => {
+    const name = (identity?.first_name || identity?.full_name || 'staff').trim().split(/\s+/)[0].toLowerCase()
+    void supabase.from('guest_conversations')
+      .update({ last_read_by: name, last_read_at: new Date().toISOString() })
+      .eq('id', conversation.id)
+  }, [identity, conversation.id])
+
   // Background delivery for one optimistic bubble; reconciles or marks it failed.
   const deliver = useCallback(async (tempId: string, body: string) => {
     try {
@@ -276,10 +286,11 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
         }
         return prev.map((m) => (m.id === tempId ? { ...m, wa_message_id: wamid, status: 'sent' } : m))
       })
+      stampReplied()
     } catch {
       setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)))
     }
-  }, [conversation.id, conversation.wa_phone])
+  }, [conversation.id, conversation.wa_phone, stampReplied])
 
   // Media delivery: the file is already uploaded to inbox-media (public URL) when this runs.
   const deliverMedia = useCallback(async (tempId: string, mediaUrl: string, kind: string, filename?: string) => {
@@ -299,10 +310,11 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
         }
         return prev.map((m) => (m.id === tempId ? { ...m, wa_message_id: wamid, media_url: mediaUrl, status: 'sent' } : m))
       })
+      stampReplied()
     } catch {
       setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)))
     }
-  }, [conversation.id, conversation.wa_phone])
+  }, [conversation.id, conversation.wa_phone, stampReplied])
 
   // Attach flow: optimistic bubble with a local preview, upload to storage, then send the link.
   const handleSendMedia = useCallback(async (file: File) => {
@@ -467,6 +479,22 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
             </div>
           )}
         </div>
+        {(conversation.unread_count || 0) > 0 && (
+          <button
+            onClick={() => {
+              // Escape hatch for messages that need no reply ("thank you"):
+              // an explicit tap counts as handling — passive opening does not.
+              const name = (identity?.first_name || identity?.full_name || 'staff').trim().split(/\s+/)[0].toLowerCase()
+              void supabase.from('guest_conversations')
+                .update({ unread_count: 0, last_read_by: name, last_read_at: new Date().toISOString() })
+                .eq('id', conversation.id)
+            }}
+            className="text-[11px] px-2.5 py-1 rounded-full bg-wa-search text-wa-muted hover:text-wa-text shrink-0 whitespace-nowrap"
+            title="Clear the alert without replying — for messages that need no answer"
+          >
+            Mark handled
+          </button>
+        )}
         <WindowChip open={win.open} expiresAt={win.expiresAt} />
       </div>
 
@@ -532,7 +560,7 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
           <TemplateSheet
             conversation={conversation}
             onClose={() => setTemplatesOpen(false)}
-            onSent={(msg) => setInfo(msg)}
+            onSent={(msg) => { setInfo(msg); stampReplied() }}
           />
         </Suspense>
       )}
