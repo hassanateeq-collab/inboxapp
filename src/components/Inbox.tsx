@@ -11,7 +11,7 @@ const CONV_COLS =
   'id, connection_id, wa_phone, display_name, last_message_at, last_message_preview, last_inbound_at, ' +
   'unread_count, status, guest_id, booking_id, room_number, room_type, property_id, property_code, property_label, ' +
   'booking_source, booking_name, beds24_booking_id, checkin_status, check_in, check_out, tier, ' +
-  'last_message_direction, last_message_status, wa_valid, booked_at'
+  'last_message_direction, last_message_status, wa_valid, booked_at, last_read_by, last_read_at'
 
 // Long, loud three-tone alarm (~2.5s) — fired on new inbound and repeated every minute
 // while anything sits unread, so reception can't miss a message even with the app in the
@@ -90,6 +90,10 @@ export default function Inbox({ session }: { session: Session }) {
   const conversationsRef = useRef<Conversation[]>([])
   conversationsRef.current = conversations
   const subscribedOnceRef = useRef(false)
+  // Short staff handle for the shared read stamp ("ali" from ali@hamsun...).
+  const readerName = (session.user.email || 'staff').split('@')[0]
+  const readerNameRef = useRef(readerName)
+  readerNameRef.current = readerName
 
   const loadConversations = useCallback(async () => {
     const { data } = await supabase
@@ -212,7 +216,9 @@ export default function Inbox({ session }: { session: Session }) {
         }
         if (m?.direction === 'inbound' && isSelected) {
           // The thread is open, so keep the DB read-state at 0 (echo merges the same value: no flicker).
-          void supabase.from('guest_conversations').update({ unread_count: 0 }).eq('id', convId)
+          void supabase.from('guest_conversations')
+            .update({ unread_count: 0, last_read_by: readerNameRef.current, last_read_at: new Date().toISOString() })
+            .eq('id', convId)
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'guest_messages' }, (payload) => {
@@ -258,7 +264,26 @@ export default function Inbox({ session }: { session: Session }) {
       flip = !flip
       document.title = flip ? `🔴 (${totalUnread}) NEW MESSAGE` : `(${totalUnread}) Hamsun Inbox`
     }, 1500)
-    const rering = setInterval(() => {
+    const rering = setInterval(async () => {
+      // Phones with a suspended realtime socket ring on STALE state — someone
+      // else may have read the message minutes ago. Verify against the DB and
+      // resync instead of ringing when the unread is already handled.
+      try {
+        const { data, error } = await supabase
+          .from('v_inbox_conversations')
+          .select('unread_count, last_inbound_at')
+          .gt('unread_count', 0)
+        if (!error) {
+          const fresh = (data || []).reduce((s: number, c: any) => {
+            const t = c.last_inbound_at ? Date.parse(c.last_inbound_at) : 0
+            return Date.now() - t < 24 * 3600 * 1000 ? s + (c.unread_count || 0) : s
+          }, 0)
+          if (fresh === 0) {
+            loadConversations() // clears the stale badge and stops the alarm
+            return
+          }
+        }
+      } catch { /* offline — fall through and ring on local state */ }
       playAlarm()
       try {
         if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
@@ -271,7 +296,18 @@ export default function Inbox({ session }: { session: Session }) {
       } catch { /* ignore */ }
     }, 60_000)
     return () => { clearInterval(flash); clearInterval(rering); document.title = 'Hamsun Inbox' }
-  }, [totalUnread, alarmUnread])
+  }, [totalUnread, alarmUnread, loadConversations])
+
+  // Phones suspend the realtime socket in the background: whenever the app
+  // comes back to the foreground, resync immediately so badges and alarms
+  // reflect what teammates already handled.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === 'visible') loadConversations()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [loadConversations])
 
   const propertyOptions = useMemo(() => {
     const map = new Map<string, string>()
@@ -361,8 +397,16 @@ export default function Inbox({ session }: { session: Session }) {
     selectedIdRef.current = id
     setSelectedId(id)
     // Optimistic: clear the badge locally right away; the DB echo re-merges the same value.
+    const hadUnread = (conversationsRef.current.find((c) => c.id === id)?.unread_count || 0) > 0
     setConversations((prev) => prev.map((c) => (c.id === id && c.unread_count ? { ...c, unread_count: 0 } : c)))
-    void supabase.from('guest_conversations').update({ unread_count: 0 }).eq('id', id)
+    // Read state is shared by design — stamp WHO cleared it so the team can see
+    // who picked the message up ("Seen by ali").
+    const patch: Record<string, unknown> = { unread_count: 0 }
+    if (hadUnread) {
+      patch.last_read_by = readerName
+      patch.last_read_at = new Date().toISOString()
+    }
+    void supabase.from('guest_conversations').update(patch).eq('id', id)
   }
 
   // Escape deselects the open thread on the mobile layout (modal Escape handlers stop propagation first).

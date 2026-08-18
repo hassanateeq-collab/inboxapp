@@ -456,6 +456,9 @@ export default function ChatThread({ conversation, identity, onBack }: { convers
               {conversation.checkin_status === 'CHECKED_OUT' && (
                 <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-semibold">Checked out</span>
               )}
+              {conversation.last_read_by && (
+                <span className="whitespace-nowrap">· seen by {conversation.last_read_by}</span>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2 text-xs text-wa-muted min-w-0">

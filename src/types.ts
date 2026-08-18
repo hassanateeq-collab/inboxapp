@@ -29,6 +29,10 @@ export interface Conversation {
   wa_valid: boolean | null
   // when the booking was CREATED (bookings.created_at) — drives the "Newest bookings" sort
   booked_at: string | null
+  // who cleared the unread badge (short staff handle) and when — read state is
+  // shared across the team, this shows who picked the message up
+  last_read_by: string | null
+  last_read_at: string | null
 }
 
 // Conversation-list sort orders. The default is per-tab: Arriving -> 'booked'

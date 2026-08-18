@@ -325,9 +325,12 @@ export default function ConversationList({
                             )}
                             <span className="truncate">{c.last_message_preview || (g.isStray ? '+' + c.wa_phone : '')}</span>
                           </span>
-                          {c.unread_count > 0 && (
+                          {c.unread_count > 0 ? (
                             <span className="bg-wa-green text-black text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 grid place-items-center shrink-0">{c.unread_count}</span>
-                          )}
+                          ) : c.last_read_by && c.last_message_direction === 'inbound' ? (
+                            // Shared read state: show who picked this message up.
+                            <span className="text-[10px] text-wa-muted shrink-0 whitespace-nowrap">seen · {c.last_read_by}</span>
+                          ) : null}
                         </div>
                       </div>
                     </button>
